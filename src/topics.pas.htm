@@ -1,0 +1,607 @@
+<%
+// ----------------------------------------------------------------------------
+// \file      topics.pas.htm
+// \author    Jens Kallup - paule32
+// \copyright (c) 2024 all rights reserved.
+//
+// \license   only for education and non-profit usage.
+//            commercial use is not allowed.
+// ----------------------------------------------------------------------------
+var
+	aTopicList: THndTopicsInfoArray;
+var
+	nCurTopic, nCurParent, nTopicKind, nHeaderKind, nFooterKind: integer;
+var
+	sCharset, sTopicHeader, sTopicFooter, sRelativeTopic: string;
+var
+	aBreadCrumb: array of String;
+
+// ----------------------------------------------------------------------------
+// \brief This class is for holding a object in the string list of a item ...
+// ----------------------------------------------------------------------------
+type
+    TContentHelper = class
+    public
+        caption: String;        // caption of the item
+        id     : String;        // internal name
+        data   : TMemoryStream; // html content
+    end;
+
+// ----------------------------------------------------------------------------
+// \brief A list (enum) of supported item types at HelpNDoc 9.0
+// ----------------------------------------------------------------------------
+type
+    TItemType = (
+        itUnknown        =  0,
+        itPicture        =  1,
+        itMovie          =  2,
+        itDocument       =  3,
+        itSystemVariable =  4,
+        itVariable       =  5,
+        itHTML           =  6,
+        itSnippet        =  7,
+        itFolder         =  8,
+        itImageMap       =  9,
+        itBarCode        = 10,
+        itCounter        = 11
+    );
+
+// ----------------------------------------------------------------------------
+// \brief The follow class handle the snippet's int the item library.
+// ----------------------------------------------------------------------------
+type
+	TSnippet = class
+	private
+		FSnippetList: TStrings;
+        FContent: String;
+	public
+		constructor Create;
+		destructor Destroy; override;
+        
+        function get(index:   Integer): String; overload;
+        function get(caption: String ): String; overload;
+    published
+        property Html: String read FContent;
+	end;
+
+// ----------------------------------------------------------------------------
+// \brief A class to handle content in the topic editor ...
+// ----------------------------------------------------------------------------
+type
+    TCustomEditorCursor = class
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure down; overload;
+        procedure down(count: Integer); overload;
+        //
+        procedure up; overload;
+        procedure up(count: Integer); overload;
+        //
+        procedure moveBottom;
+        procedure moveTop;
+    end;
+// ----------------------------------------------------------------------------
+type
+    TCustomEditor = class
+    private
+        FCustomEditorCursor: TCustomEditorCursor;
+    public
+        constructor Create;
+        destructor Destroy; override;
+    published
+        property Cursor: TCustomEditorCursor read FCustomEditorCursor;
+    end;
+
+// ----------------------------------------------------------------------------
+// \brief A abstract class for a html project, to hold variables in a scoped
+//        range, to "not" store all variables in the global scope.
+//        So, you can use multiple variable (names) in different domain's.
+// ----------------------------------------------------------------------------
+type
+	TCustomHtml = class
+	private
+		FTempEditor: TCustomEditor;
+		FSnippets: TSnippet;
+	public
+		constructor Create;
+		destructor Destroy; override;
+	published
+		property Editor: TCustomEditor read FTempEditor;
+		property Snippet: TSnippet read FSnippets;
+	end;
+// ----------------------------------------------------------------------------
+type
+	THtml = class(TCustomHtml)
+	public
+		constructor Create;
+		destructor Destroy; override;
+	end;
+var
+	htmlProject: THtml;
+
+// ----------------------------------------------------------------------------
+// \brief  This is the default constructor for class TSnippet.
+// \param  nothing
+// \return pointer to memory address of the created object.
+// ----------------------------------------------------------------------------
+constructor TSnippet.Create;
+var
+    list: THndLibraryItemsInfoArray;
+    index: Integer;
+    content: TContentHelper;
+begin
+	inherited Create;
+	FSnippetList := TStringList.Create;
+    
+    list := HndLibraryItems.GetItemList([itSnippet]);
+    
+    for index := 0 to list.Count-1 do
+    begin
+        content := TContentHelper.Create;
+        content.Caption := list[index].Caption;
+        content.ID      := list[index].ID;
+        content.data    := HndLibraryItems.GetItemContent(content.ID);
+
+        FSnippetList.AddObject(list[index].Caption, content);
+    end;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief This is the destructor of class TSnippet. It is used to free memory
+//        that was allocated before.
+// ----------------------------------------------------------------------------
+destructor TSnippet.Destroy;
+begin
+	FSnippetList.Clear;
+	FSnippetList.Free;
+	FSnippetList := nil;
+	
+	inherited Destroy;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function get a item ID by a index
+// \param  caption - String => The library item name
+// \return id      - String => the internal item identifier
+// ----------------------------------------------------------------------------
+function TSnippet.get(index: Integer): String;
+begin
+    result := FSnippetList[index];
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function get a item ID by a caption
+// \param  caption - String => The library item name
+// \return id      - String => the internal item identifier
+// ----------------------------------------------------------------------------
+function TSnippet.get(caption: String): String;
+begin
+    if FSnippetList.IndexOf(caption) < 0 then
+    begin
+        ShowMessage('index out of bounds.');
+        raise Exception.Create('internal error.');
+    end;
+    result := HndLibraryItems.GetItemByCaption(caption);
+end;
+
+constructor TCustomEditorCursor.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomEditorCursor.Destroy;
+begin
+    FCustomEditorCursor.Free;
+    FCustomEditorCursor := nil;
+    inherited Destroy;
+end;
+
+procedure TCustomEditorCursor.down;
+begin
+end;
+procedure TCustomEditorCursor.down(count: Integer);
+begin
+end;
+
+procedure TCustomEditorCursor.up;
+begin
+end;
+procedure TCustomEditorCursor.up(count: Integer);
+begin
+end;
+
+procedure TCustomEditorCursor.moveBottom;
+begin
+end;
+procedure TCustomEditorCursor.moveTop;
+begin
+end;
+
+constructor TCustomEditor.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomEditor.Destroy;
+begin
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This is the default constructor for class TCustomHtml.
+// \param  nothing
+// \return pointer to memory address of the created object.
+// ----------------------------------------------------------------------------
+constructor TCustomHtml.Create;
+var
+	errorMessage: String;
+begin
+	inherited Create;
+	try
+        errorMessage :=
+		'Error: snippet class could not be created.' + #13#10 +
+		'A Excpetion should stop the build.';
+		FSnippets := TSnippet.Create;
+        
+		errorMessage :=
+		'Error: temporary Editor could not be create.' + #13#10 +
+		'A Exception should stop the build.';
+		FTempEditor := HndEditor.CreateTemporaryEditor;
+    except
+		ShowMessage(errorMessage);
+		raise Exception.Create('internal error');
+	end; 
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This is the destructor for class TCustomHtml. It is used to free
+//         allocated memory space.
+// \param  nothing
+// \return nothing - it is a procedure
+// ----------------------------------------------------------------------------
+destructor TCustomHtml.Destroy;
+begin
+	if FTempEditor = nil then
+	begin
+		ShowMessage(
+		'Error: TCustomHtml.Destroy called, and FTempEditor is nil.' + #13#10 +
+		'This is a internal error, because the Editor was not allocated.');
+		raise Exception.Create('internal error');
+	end else
+	begin
+		HndEditor.DestroyTemporaryEditor(FTempEditor);		
+	end;
+
+	FSnippets.Free;
+	FSnippets := nil;
+		
+	inherited Destroy;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This is the constructor for class THtml. It is the default ctor.
+// \param  nothing
+// \return pointer to memory address of the created object.
+// ----------------------------------------------------------------------------
+constructor THtml.Create;
+begin
+	inherited Create;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This is the destructor for class THtml. It will be used to try free
+//         alloced memory.
+// \param  nothing
+// \return nothing - it is a procedure 
+// ----------------------------------------------------------------------------
+destructor THtml.Destroy;
+begin
+	inherited Destroy;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief This function can be used, to insert snippet content at the bottom of
+//        the current topic.
+//
+// \param name: String  => the name of the snippet in the items library.
+// ----------------------------------------------------------------------------
+function insertUserSnippet(name: String): Boolean;
+var
+	snipID: String;
+begin
+	result := false;
+
+    htmlProject := THtml.Create;
+	try
+		try
+            showmessage(htmlProject.Snippet.get(0));
+		(*
+			if tempEditor = nil then
+			tempEditor := HndEditor.CreateTemporaryEditor;
+			HndEditor.MoveCarretToEnd(tempEditor);
+			snipID := Trim(HndLibraryItems.GetItemByCaption('Fuzeile'));
+			if Length(snipID) > 1 then
+			begin
+				ShowMessage('no internal footer.');
+				raise Exception.Create('internal error');
+			end;*)
+		except
+			ShowMessage('Error: could not create tmp Editor.');
+			raise Exception.Create('internal error');
+		end;
+	finally
+        htmlProject.Free;
+        
+(*		if tempEditor <> nil then
+		HndEditor.DestroyTemporaryEditor(tempEditor);*)
+	end;
+end;
+		
+	function GetCompatibilityModeMeta(): string;
+	var
+		sVersion: string;
+	begin
+		Result := '';
+		sVersion := HndGeneratorInfo.GetCustomSettingValue('IECompatibilityMode');
+		if Copy(sVersion, 1, 3) = 'IE=' then
+			Result := Format('<meta http-equiv="X-UA-Compatible" content="%s">', [sVersion]);
+	end;
+
+	function GetCustomCss: string;
+    begin
+        Result := HndGeneratorInfo.GetCustomSettingValue('CustomCss');
+        if (Result <> '') then
+            Result := '<style type="text/css">' + Result + '</style>';
+    end;
+
+	function GetCustomJs: string;
+	begin
+		Result := HndGeneratorInfo.GetCustomSettingValue('CustomJs');
+		if (Result <> '') then
+			Result := '<script type="text/javascript">try{' + #13#10 + Result + #13#10 + '}catch(e){alert("Exception in custom JavaScript Code: " + e);}</script>';
+	end;
+
+	// Return the topic extension, starting with a dot
+	function GetTopicExtension: string;
+	begin
+		Result := Trim(HndGeneratorInfo.TemplateInfo.TopicExtension);
+		if ((Length(Result) > 0) and (Result[1] <> '.')) then
+			Result := '.' + Result;
+	end;
+
+	// Returns the header
+	function GetTemplateHtmlHeader: string;
+	begin
+		Result := HndGeneratorInfo.GetCustomSettingValue('Header');
+	end;
+
+	// Returns the footer
+	function GetTemplateHtmlFooter: string;
+	begin
+		Result := HndGeneratorInfo.GetCustomSettingValue('Footer');
+	end;
+	
+	// Returns the description of the topic
+	function GetTopicDescription: string;
+	begin
+		// Get value
+		Result := HndTopics.GetTopicDescription(HndGeneratorInfo.CurrentTopic);
+		// Empty ? Use project's description instead
+		if (Result = '') then Result := HndProjects.GetProjectSummary;
+	end;
+
+begin
+	// UTF-8 or project charset ?
+	if HndGeneratorInfo.GetCustomSettingValue('UseCharsetForTopics') then
+	begin
+		// Use project charset
+		HndGeneratorInfo.BOMOutput := False;
+		HndGeneratorInfo.ForceOutputEncoding := True;
+		sCharset := HndProjects.GetProjectCharsetAsHtml();
+	end
+	else begin
+		// Need BOM for UTF8 files
+		HndGeneratorInfo.BOMOutput := True;
+		sCharset := 'UTF-8';
+	end;
+
+	// Output global CSS content
+	HndGeneratorInfo.CurrentFile := 'css\hnd.css';
+	print(HndProjects.GetProjectCssContent());
+	
+	// Each individual topics generated...
+	aTopicList := HndTopicsEx.GetTopicListGenerated(False, False);
+	for nCurTopic := 0 to length(aTopicList) - 1 do
+	begin
+		// Notify about the topic being generated
+		HndGeneratorInfo.CurrentTopic := aTopicList[nCurTopic].id;
+		// Topic kind
+		nTopicKind := aTopicList[nCurTopic].Kind;
+		if (nTopicKind = 1) then continue;  // Empty topic: do not generate anything
+		// Setup the file name
+		HndGeneratorInfo.CurrentFile := HndTopics.GetTopicHelpId(HndGeneratorInfo.CurrentTopic) + GetTopicExtension();
+		// Topic header
+		nHeaderKind := HndTopics.GetTopicHeaderKind(HndGeneratorInfo.CurrentTopic);
+		sTopicHeader := HndTopics.GetTopicHeaderTextCalculated(HndGeneratorInfo.CurrentTopic);
+		// Topic footer
+		nFooterKind := HndTopics.GetTopicFooterKind(HndGeneratorInfo.CurrentTopic);
+		sTopicFooter := HndTopics.GetTopicFooterTextCalculated(HndGeneratorInfo.CurrentTopic);
+		// Create the breadcrumb
+		aBreadCrumb.SetLength(0);
+		if HndGeneratorInfo.GetCustomSettingValue('ShowBreadCrumbs') then
+		begin
+			sRelativeTopic := HndTopics.GetTopicParent(HndGeneratorInfo.CurrentTopic);
+			while (sRelativeTopic <> '') and (sRelativeTopic <> HndTopics.GetProjectTopic()) do
+			begin
+				aBreadCrumb.SetLength(Length(aBreadCrumb) + 1);
+				aBreadCrumb[Length(aBreadCrumb) - 1] := sRelativeTopic;
+				sRelativeTopic := HndTopics.GetTopicParent(sRelativeTopic);
+			end;
+		end;
+
+%><!DOCTYPE html>
+
+<html>
+	
+<head>
+	<title><% print(HTMLEncode(HndTopics.GetTopicCaption(HndGeneratorInfo.CurrentTopic))); %></title>
+	<meta http-equiv="Content-Type" content="text/html; charset=<% print(sCharset); %>">
+	<% print(GetCompatibilityModeMeta()); %>
+	<meta name="description" content="<% print(HTMLEncode(GetTopicDescription())); %>" />
+    <meta name="generator" content="<% print(HTMLEncode(HndGeneratorInfo.HelpNDocVersion)); %>" />
+	
+	<%
+		// Redirect for URL and Files topic
+		if (nTopicKind = 2) then
+		begin
+		  printf('<meta http-equiv="refresh" content="0;URL=%s">', [HndTopics.GetTopicUrlLink(HndGeneratorInfo.CurrentTopic)]);
+		end
+		else begin
+	%>
+	
+	<link type="text/css" rel="stylesheet" media="all" href="css/reset.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/base.css" />
+	<link type="text/css" rel="stylesheet" media="all" href="css/hnd.css" />
+	<!--[if lte IE 8]>
+		<link type="text/css" rel="stylesheet" media="all" href="css/ielte8.css" />
+	<![endif]-->
+
+	<style type="text/css">
+		#topic_header
+		{
+			background-color: #<% print(HndUtils.TColorToHex(HndGeneratorInfo.GetCustomSettingValue('BaseColor'))); %>;
+		}
+	</style>
+
+	<% print(GetCustomCss()); %>
+
+	<script type="text/javascript" src="js/chmRelative.js"></script>
+	
+	<%
+		end;
+	%>
+</head>
+
+<body>
+
+<%
+	// Redirect for URL and Files topic
+	if (nTopicKind = 2) then
+	begin
+	  printf('<a href="%s">Redirecting... click here if nothing happens</a>', [HndTopics.GetTopicUrlLink(HndGeneratorInfo.CurrentTopic)]);
+	end
+	else begin
+%>
+
+	<% if nHeaderKind <> 2 then begin %>
+		<div id="topic_header">
+			<div id="topic_header_content">
+				<h1><% print(HTMLEncode(sTopicHeader)); %></h1>
+				
+				<%
+					if Length(aBreadCrumb) > 0 then
+					begin
+				%>
+				<div id="topic_breadcrumb">
+					<%
+						for nCurParent := Length(aBreadCrumb) - 1 downto 0 do
+						begin
+							// Empty topic
+							if (HndTopics.GetTopicKind(aBreadCrumb[nCurParent]) = 1) then
+							begin
+								printf('%s &rsaquo;&rsaquo; ', [HTMLEncode(HndTopics.GetTopicCaption(aBreadCrumb[nCurParent]))]);
+							end
+							// Normal topic
+							else begin
+								printf('<a href="%s%s">%s</a> &rsaquo;&rsaquo; ', [HndTopics.GetTopicHelpId(aBreadCrumb[nCurParent]), GetTopicExtension(), HTMLEncode(HndTopics.GetTopicCaption(aBreadCrumb[nCurParent]))]);
+							end;
+						end;
+					%>
+				</div>
+				<%
+					end;
+					printf('%s', [GetTemplateHtmlHeader]);
+				%>
+			</div>
+			<%
+				if HndGeneratorInfo.GetCustomSettingValue('ShowNavigation') then
+				begin
+			%>
+			<div id="topic_header_nav">
+				<%
+					sRelativeTopic := HndTopics.GetTopicParent(HndGeneratorInfo.CurrentTopic);
+					if (sRelativeTopic <> '') and (sRelativeTopic <> HndTopics.GetProjectTopic()) 
+				  	 and (HndTopics.GetTopicKind(sRelativeTopic) <> 1)  // Skip blank topics
+				    then
+					begin
+				%>
+				
+				<a href="<% printf('%s%s', [HndTopics.GetTopicHelpId(sRelativeTopic), GetTopicExtension()]); %>"><img src="img/arrow_up.png" alt="Parent"/></a>
+				
+				<%
+					end;
+					// Previous topic included in TOC
+					sRelativeTopic := HndTopicsEx.GetTopicPreviousGenerated(HndGeneratorInfo.CurrentTopic, True);
+					while (HndTopics.GetTopicKind(sRelativeTopic) = 1) do  // Skip blank topics
+						sRelativeTopic := HndTopicsEx.GetTopicPreviousGenerated(sRelativeTopic, True);
+					if (sRelativeTopic <> '') and (sRelativeTopic <> HndTopics.GetProjectTopic()) then
+					begin
+				%>
+				
+				<a href="<% printf('%s%s', [HndTopics.GetTopicHelpId(sRelativeTopic), GetTopicExtension()]); %>"><img src="img/arrow_left.png" alt="Previous"/></a>
+				
+				<%
+					end;
+					// Next topic included in TOC
+					sRelativeTopic := HndTopicsEx.GetTopicNextGenerated(HndGeneratorInfo.CurrentTopic, True);
+					while (HndTopics.GetTopicKind(sRelativeTopic) = 1) do  // Skip blank topics
+						sRelativeTopic := HndTopicsEx.GetTopicNextGenerated(sRelativeTopic, True);
+					if (sRelativeTopic <> '') and (sRelativeTopic <> HndTopics.GetProjectTopic()) then
+					begin
+				%>
+				
+				<a href="<% printf('%s%s', [HndTopics.GetTopicHelpId(sRelativeTopic), GetTopicExtension()]); %>"><img src="img/arrow_right.png" alt="Next"/></a>
+				
+				<%
+					end;
+				%>
+			</div>
+			<%
+				end;
+			%>
+			<div class="clear"></div>
+		</div>
+	<% end; %>
+	
+	<div id="topic_content">
+		<% print(HndTopics.GetTopicContentAsHtml(HndGeneratorInfo.CurrentTopic)); %>
+	</div>
+	<%
+		insertUserSnippet('11');
+	%>
+		
+	<% if nFooterKind <> 2 then begin %>
+		<div id="topic_footer">
+
+			<div id="topic_footer_content">
+				<% print(HTMLEncode(sTopicFooter)); %>
+			</div>
+		</div>
+	<% end; %>
+
+	<div id="custom_footer"><% print(GetTemplateHtmlFooter()); %></div>
+
+	<% print(GetCustomJs()); %>
+	
+<%
+	end;
+%>
+	
+</body>
+	
+</html>
+
+<%
+	end;  // for nCurTopic
+	
+end.
+%>
