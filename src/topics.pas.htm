@@ -153,6 +153,38 @@ type
     end;
 
 // ----------------------------------------------------------------------------
+// \brief This class can be use for style color html parts...
+// ----------------------------------------------------------------------------
+type
+    TCustomColor = class
+    private
+        FColor: TColor;
+    public
+        constructor Create;
+        destructor Destroy; override;
+    published
+        property Black: TColor read FColor;
+        property White: TColor read FColor;
+        property Red: TColor read FColor;
+        property Blue: TColor read FColor;
+        property Green: TColor read FColor;
+        property Lime: TColor read FColor;
+        property Yellow: TColor read FColor;
+        property Navy: TColor read FColor;
+    end;
+
+type
+    TCustomImage = class
+    private
+        FImageFile: String;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure LoadFromFile(s: String);
+    end;
+
+// ----------------------------------------------------------------------------
 // \brief global scoped variables - use with caution !
 // ----------------------------------------------------------------------------
 var Env     : TEnvironment;
@@ -163,6 +195,8 @@ var MetaList  : TStringList;
 var CssList   : TStringList;
 var StyleList : TStringList;
 var ScriptList: TStringList;
+
+var Color: TCustomColor;
     
 // ----------------------------------------------------------------------------
 // \brief This class is for holding a object in the string list of a item ...
@@ -346,12 +380,14 @@ type
 type
     TCustomHeadStyleBackground = class
     private
-        FColor: TColor;
+        FCustomColor: TCustomColor;
+        FCustomImage: TCustomImage;
     public
         constructor Create;
-        destructor Destroy;
+        destructor Destroy; override;
     published
-        property Color: TColor read FColor;
+        property Color: TCustomColor read FCustomColor;
+        property Image: TCustomImage read FCustomImage;
     end;
 
 type
@@ -654,8 +690,12 @@ begin
 end;
 destructor TCustomMetaName.Destroy;
 begin
-    MetaList.Clear;
-    MetaList.Free;
+    if MetaList <> nil then
+    begin
+        MetaList.Clear;
+        MetaList.Free;
+        MetaList := nil;
+    end;
     
     inherited Destroy;
 end;
@@ -818,9 +858,9 @@ destructor TCustomHeadStyle.Destroy;
 begin
     inherited Destroy;
 end;
-procedure TCustomHeadStyle.add(s: String);
+procedure TCustomHeadStyle.add(AIdent: String; AValue: String);
 begin
-    StyleList.Add(s);
+    StyleList.Add(AIdent + '=' + AValue);
 end;
 function TCustomHeadStyle.get(AIndex: Integer): String;
 begin
@@ -864,11 +904,17 @@ end;
 
 destructor TCustomHeadMeta.Destroy;
 begin
-    fMetaContent.Free;
-    FMetaContent := nil;
+    if FMetaContent <> nil then
+    begin
+        fMetaContent.Free;
+        FMetaContent := nil;
+    end;
     //
-    FMetaName.Free;
-    FMetaName := nil;
+    if FMetaName <> nil then
+    begin
+        FMetaName.Free;
+        FMetaName := nil;
+    end;
     
     if MetaList <> nil then
     begin
@@ -952,6 +998,19 @@ begin
     result := FTitle;
 end;
 
+
+{ TCustomHeadStyleBackground }
+
+constructor TCustomHeadStyleBackground.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomHeadStyleBackground.Destroy;
+begin
+    inherited Destroy;
+end;
+
+
 { TCustomHead }
 
 // ----------------------------------------------------------------------------
@@ -967,11 +1026,17 @@ begin
 end;
 destructor TCustomHead.Destroy;
 begin
-    FHeadMeta.Free;
-    FHeadMeta := nil;
+    if FHeadMeta <> nil then
+    begin
+        FHeadMeta.Free;
+        FHeadMeta := nil;
+    end;
     
-    FHeadTitle.Free;
-    FHeadTitle := nil;
+    if FHeadTitle <> nil then
+    begin
+        FHeadTitle.Free;
+        FHeadTitle := nil;
+    end;
     
     inherited Destroy;
 end;
@@ -1011,9 +1076,12 @@ end;
 // ----------------------------------------------------------------------------
 destructor TSnippet.Destroy;
 begin
-    FSnippetList.Clear;
-    FSnippetList.Free;
-    FSnippetList := nil;
+    if FSnippetList <> nil then
+    begin
+        FSnippetList.Clear;
+        FSnippetList.Free;
+        FSnippetList := nil;
+    end;
     
     inherited Destroy;
 end;
@@ -1185,12 +1253,51 @@ begin
 end;
 destructor TCustomEditor.Destroy;
 begin
-    FCustomEditorCursor.Free;
-    FCustomEditorCursor := nil;
+    if FCustomEditorCursor <> nil then
+    begin
+        FCustomEditorCursor.Free;
+        FCustomEditorCursor := nil;
+    end;
     
     HndEditor.DestroyTemporaryEditor(FEditor);
     inherited Destroy;
 end;
+
+
+{ TCustomColor }
+
+constructor TCustomColor.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomColor.Destroy;
+begin
+    inherited Destroy;
+end;
+
+
+{ TCustomImage }
+
+constructor TCustomImage.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomImage.Destroy;
+begin
+    inherited Destroy;
+end;
+procedure TCustomImage.LoadFromFile(s: String);
+begin
+    if not FileExists(s) then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: image file does not exists.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+end;
+
 
 { TCustomHtml }
 
@@ -1252,21 +1359,35 @@ begin
         FTempEditor.Free;
     end;
     
-    FCustomHead.Free;
+    if FCustomHead <> nil then
+    begin
+        FCustomHead.Free;
+        FCustomHead := nil;
+    end;
 
-    FSnippets.Free;
-    FSnippets := nil;
+    if FSnippets <> nil then
+    begin
+        FSnippets.Free;
+        FSnippets := nil;
+    end;
     
-    CssList.Clear;
-    CssList.Free;
-    CssList := nil;
+    if CssList <> nil then
+    begin
+        CssList.Clear;
+        CssList.Free;
+        CssList := nil;
+    end;
     
-    ScriptList.Clear;
-    ScriptList.Free;
-    ScriptList := nil;
+    if ScriptList <> nil then
+    begin
+        ScriptList.Clear;
+        ScriptList.Free;
+        ScriptList := nil;
+    end;
     
     inherited Destroy;
 end;
+
 
 { THtml }
 
@@ -1309,7 +1430,7 @@ begin
     
     Head.Style.add('#topic_header','background-color: #' +
     HndUtils.TColorToHex(
-    HndGeneratorInfo.GetCustomSettingValue('BaseColor')) ';');
+    HndGeneratorInfo.GetCustomSettingValue('BaseColor')) + ';');
     
     CreatePage;
 end;
@@ -1322,8 +1443,11 @@ end;
 // ----------------------------------------------------------------------------
 destructor THtml.Destroy;
 begin
-    Locale.Free;
-    Locale := nil;
+    if Locale <> nil then
+    begin
+        Locale.Free;
+        Locale := nil;
+    end;
     
     if Env <> nil then
     begin
@@ -1429,7 +1553,11 @@ begin
             raise Exception.Create('internal error');
         end;
     finally
-        html.Free;
+        if html <> nil then
+        begin
+            html.Free;
+            html := nil;
+        end;
         
 (*      if tempEditor <> nil then
         HndEditor.DestroyTemporaryEditor(tempEditor);*)
