@@ -540,10 +540,10 @@ begin
         except
             if debugMode then
             ShowMessage(
-            Locale.tr('Error: The locales file: ') + FFileName + #13#10 +
-            Locale.tr('could not be open.') + #13#10 +
-            Locale.tr('A Exception should stop the build.'));
-            raise Exception.Create(Locale.tr('internal error.'));
+            tr('Error: The locales file: ') + FFileName + #13#10 +
+            tr('could not be open.') + #13#10 +
+            tr('A Exception should stop the build.'));
+            raise Exception.Create(tr('internal error.'));
         end;
     end;
 end;
@@ -576,10 +576,10 @@ begin
         except
             if debugMode then
             ShowMessage(
-            Locale.tr('Error: The locales file: ') + FFileName + #13#10 +
-            Locale.tr('could not be open.') + #13#10 +
-            Locale.tr('A Exception should stop the build.'));
-            raise Exception.Create(Locale.tr('internal error.'));
+            tr('Error: The locales file: ') + FFileName + #13#10 +
+            tr('could not be open.') + #13#10 +
+            tr('A Exception should stop the build.'));
+            raise Exception.Create(tr('internal error.'));
         end;
     end;
 end;
@@ -612,10 +612,10 @@ begin
         except
             if debugMode then
             ShowMessage(
-            Locale.tr('Error: The locales file: ') + FFileName + #13#10 +
-            Locale.tr('could not be open.') + #13#10 +
-            Locale.tr('A Exception should stop the build.'));
-            raise Exception.Create(Locale.tr('internal error.'));
+            tr('Error: The locales file: ') + FFileName + #13#10 +
+            tr('could not be open.') + #13#10 +
+            tr('A Exception should stop the build.'));
+            raise Exception.Create(tr('internal error.'));
         end;
     end;
 end;
@@ -645,8 +645,8 @@ begin
     begin
         if debugMode then
         ShowMessage(
-        Locale.tr('Error: the locales directory does not exists.') + #13#10 +
-        Locale.tr('A fallback to English will be set.'));
+        tr('Error: the locales directory does not exists.') + #13#10 +
+        tr('A fallback to English will be set.'));
         FFallBack := true;
         exit;
     end;
@@ -655,9 +655,9 @@ begin
     begin
         if debugMode then
         ShowMessage(
-        Locale.tr('Error: the locales file: ') + FFileName + #13#10 +
-        Locale.tr('does not exists.') + #13#10 +
-        Locale.tr('A fallback to English will be set.'));
+        tr('Error: the locales file: ') + FFileName + #13#10 +
+        tr('does not exists.') + #13#10 +
+        tr('A fallback to English will be set.'));
         FFallBack := true;
         exit;
     end;
@@ -673,12 +673,17 @@ end;
 // ----------------------------------------------------------------------------
 function TLocales.tr(s: String): String;
 begin
-    if FFallBack then
-    begin
+    result := '';
+    try
+        if FFallBack then
+        begin
+            result := s;
+            exit;
+        end;
+    except
+        FFallBack := true;
         result := s;
         exit;
-    end else
-    begin // todo !
     end;
 end;
 
@@ -834,17 +839,51 @@ end;
 constructor TCustomHeadCSS.Create;
 begin
     inherited Create;
+    CssList := TStringList.Create;
+    FCount := 0;
 end;
 destructor TCustomHeadCSS.Destroy;
 begin
+    if CssList <> nil then
+    begin
+        CssList.Clear;
+        CssList.Free;
+        CssList := nil;
+    end;
+    
     inherited Destroy;
 end;
 procedure TCustomHeadCSS.add(s: String);
 begin
     CssList.Add(s);
+    inc(FCount);
 end;
 function TCustomHeadCSS.get(AIndex: Integer): String;
+var s: String;
 begin
+    result := '';
+    
+    if (AIndex < 0)
+    or (CssList.Count < 0) then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: css list index out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    s := Trim(CssList.Strings[Aindex]);
+    if Length(s) < 1 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: css string is empty.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    result := s;
 end;
 
 
@@ -853,17 +892,64 @@ end;
 constructor TCustomHeadStyle.Create;
 begin
     inherited Create;
+    StyleList := TStringList.Create;
+    FCount := 0;
 end;
 destructor TCustomHeadStyle.Destroy;
 begin
+    if StyleList <> nil then
+    begin
+        StyleList.Clear;
+        StyleList.Free;
+        StyleList := nil;
+    end;
+    
     inherited Destroy;
 end;
 procedure TCustomHeadStyle.add(AIdent: String; AValue: String);
+var content: TContentHelper;
 begin
-    StyleList.Add(AIdent + '=' + AValue);
+    content := TContentHelper.Create;
+    content.caption := AValue;
+    
+    if StyleList = nil then
+    StyleList := TStringList.Create;
+    StyleList.AddObject(AIdent, content);
+    
+    showmessage('#### ' + #13#10 + TContentHelper(StyleList.Objects[0]).caption);
+    FCount := StyleList.Count;
 end;
 function TCustomHeadStyle.get(AIndex: Integer): String;
+var s1, s2: String;
+var epos, len: Integer;
+var ch: TContentHelper;
 begin
+    // index out of bounds ?
+    if (AIndex > MetaList.Count-1)
+    or (AIndex < 0)
+    or ((MetaList.Count-1) < 0) then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: meta name is empty/out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    s1 := StyleList.Strings[AIndex];
+    if Length(s1) < 1 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: index out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    ch := TContentHelper(StyleList.Objects[0]);
+    
+    showmessage('--->>'+#13#10+s1 + #13#10 +s2);
+    result := s1;
 end;
 
 
@@ -1021,11 +1107,32 @@ end;
 constructor TCustomHead.Create;
 begin
     inherited Create;
-    FHeadTitle := TCustomHeadTitle.Create;
-    FHeadMeta := TCustomHeadMeta.Create;
+    FHeadTitle  := TCustomHeadTitle.Create;
+    FHeadMeta   := TCustomHeadMeta.Create;
+    FHeadCSS    := TCustomHeadCSS.Create;
+    FHeadStyle  := TCustomHeadStyle.Create;
+    FHeadScript := TCustomHeadScript.Create;
 end;
 destructor TCustomHead.Destroy;
 begin
+    if FHeadScript <> nil then
+    begin
+        FHeadScript.Free;
+        FHeadScript := nil;
+    end;
+    
+    if FHeadStyle <> nil then
+    begin
+        FHeadStyle.Free;
+        FHeadStyle := nil;
+    end;
+    
+    if FHeadCSS <> nil then
+    begin
+        FHeadCss.Free;
+        FHeadCss := nil;
+    end;
+    
     if FHeadMeta <> nil then
     begin
         FHeadMeta.Free;
@@ -1037,7 +1144,7 @@ begin
         FHeadTitle.Free;
         FHeadTitle := nil;
     end;
-    
+
     inherited Destroy;
 end;
 
@@ -1493,7 +1600,7 @@ begin
         p1 := Head.CSS.get(index);
         
         htmlCode := htmlCode + '<link type="text/css" rel="stylesheet" ' +
-        'media="all" + href="' + p1 + '" />';
+        'media="all" + href="' + p1 + '" />' + #13#10;
     end;
     
     // Style
@@ -1502,8 +1609,8 @@ begin
         p1 := Head.Style.get(index);
         
         htmlCode := htmlCode + '<style type="text/css">' + #13#10 +
-        '#' + p1 + #13#10 + '{' + #13#10 +
-        p1 + #13#10 + '}</style>';
+        '#' + p1 + #13#10 + '{'   + #13#10 +
+        p1 + #13#10 + '}</style>' + #13#10 ;
     end;
     
     // Script
