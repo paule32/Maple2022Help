@@ -18,6 +18,8 @@ const CSTR_HND_PATH  = 'HND_PATH';      // env. points to HelpNDoc root dir
 var debugMode: Boolean = false;         // default: debug mode is: off => false
 var htmlCode : String  = '';            // ouput html
 
+const MO_MAGIC_NUMBER         = $950412de;
+const MO_MAGIC_NUMBER_SWAPPED = $de120495;
 
 var
     aTopicList: THndTopicsInfoArray;
@@ -28,6 +30,9 @@ var
 var
     aBreadCrumb: array of String;
 
+// ----------------------------------------------------------------------------
+// \brief This function check, if the searchStr in a string list.
+// ----------------------------------------------------------------------------
 function ContainString(const AStrings: TStrings; const ASearchStr: String) : Boolean;
 var
     LIdx : Integer;
@@ -39,6 +44,25 @@ begin
         if Pos( ASearchStr, AStrings[LIdx] ) > 0 then
         exit;
         result := False;
+    end;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief This function split the input string two strings.
+// ----------------------------------------------------------------------------
+procedure SplitString(const InputStr: string; var s1, s2: string);
+var PosDelimiter: Integer;
+begin
+    PosDelimiter := Pos(':', InputStr);
+
+    if PosDelimiter > 0 then
+    begin
+        s1 := Copy(InputStr, 1, PosDelimiter - 1);
+        s2 := Trim(Copy(InputStr, PosDelimiter + 1, Length(InputStr) - PosDelimiter));
+    end else
+    begin
+        s1 := InputStr;
+        s2 := '';
     end;
 end;
 
@@ -132,6 +156,7 @@ type
     TLocales = class
     private
         FMemStream: TMemoryStream;
+        FStringTable: TStringList;
         FFallBack: Boolean;
         
         FFilePath: String;
@@ -146,6 +171,7 @@ type
         //
         destructor Destroy; override;
         
+        procedure LoadFromFile(const s: string);
         function tr(s: String): String;
     published
         property Language: String read FLanguage;
@@ -250,8 +276,9 @@ type
 type
     TSnippet = class
     private
-        FSnippetList: TStrings;
+        FSnippetList: TStringList;
         FContent: String;
+        FCount: Integer;
     public
         constructor Create;
         destructor Destroy; override;
@@ -260,6 +287,7 @@ type
         function get(caption: String ): String; overload;
     published
         property Html: String read FContent;
+        property Count: Integer read FCount;
     end;
 
 // ----------------------------------------------------------------------------
@@ -565,7 +593,7 @@ begin
     s := HndBuilds.GetBuildTemplate(HndBuilds.GetBuildFirst);
     FFilePath := Env.HND_PATH + './Templates/chm/' + s + '/locales';
     FFileName := FFilePath + '/en_us.mo';
-    ShowMessage(FFileName);
+    //ShowMessage(FFileName);
     LocalesCheck(FFileName);
 
     if not FFallBack then
@@ -601,7 +629,7 @@ begin
     s := HndBuilds.GetBuildTemplate(HndBuilds.GetBuildFirst);
     FFilePath := Env.HND_PATH + './Templates/chm/' + s + '/locales';
     FFileName := FFilePath + '/en_us.mo';
-    ShowMessage(FFileName);
+    //ShowMessage(FFileName);
     LocalesCheck(FFileName);
 
     if not FFallBack then
@@ -686,6 +714,13 @@ begin
         exit;
     end;
 end;
+
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+procedure TLocales.LoadFromFile(const s: String);
+begin
+end;
+
 
 { TCustomMetaName }
 
@@ -906,28 +941,34 @@ begin
     
     inherited Destroy;
 end;
+
 procedure TCustomHeadStyle.add(AIdent: String; AValue: String);
-var content: TContentHelper;
+var SL: TStringList;
+var s1: String;
+var index: Integer;
 begin
-    content := TContentHelper.Create;
-    content.caption := AValue;
-    
     if StyleList = nil then
     StyleList := TStringList.Create;
-    StyleList.AddObject(AIdent, content);
     
-    showmessage('#### ' + #13#10 + TContentHelper(StyleList.Objects[0]).caption);
+    SL := TStringList.Create;
+    SL.Add(AValue);
+    
+    s1 := AIdent + ': ';
+    
+    for index := 0 to SL.Count - 1 do
+    s1 := s1 + SL.Strings[index];
+    StyleList.Add(s1);
+    
     FCount := StyleList.Count;
 end;
+
 function TCustomHeadStyle.get(AIndex: Integer): String;
-var s1, s2: String;
-var epos, len: Integer;
-var ch: TContentHelper;
+var s1, s2, s3: String;
 begin
     // index out of bounds ?
-    if (AIndex > MetaList.Count-1)
+    if (AIndex > StyleList.Count-1)
     or (AIndex < 0)
-    or ((MetaList.Count-1) < 0) then
+    or ((StyleList.Count-1) < 0) then
     begin
         if debugMode then
         ShowMessage(
@@ -936,8 +977,8 @@ begin
         raise Exception.Create(Locale.tr('internal error'));
     end;
     
-    s1 := StyleList.Strings[AIndex];
-    if Length(s1) < 1 then
+    SplitString(StyleList[AIndex], s1, s2);
+    if Length(Trim(s1)) < 1 then
     begin
         if debugMode then
         ShowMessage(
@@ -945,11 +986,23 @@ begin
         Locale.tr('A Exception should stop the build.'));
         raise Exception.Create(Locale.tr('internal error'));
     end;
+    if Length(Trim(s2)) < 1 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: text item is empty.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
     
-    ch := TContentHelper(StyleList.Objects[0]);
+    s3 := '<script type="text/css">' +
+    #13#10 + s1  + ' {'   +
+    #13#10 + s2  +
+    #13#10 + '}' + #13#10 +
+    '</script>'  ;
     
-    showmessage('--->>'+#13#10+s1 + #13#10 +s2);
-    result := s1;
+    //showmessage('s3: ' + #13#10 + s3);
+    result := s3;
 end;
 
 
@@ -1030,9 +1083,9 @@ begin
     begin
         if debugMode then
         ShowMessage(
-        'Error: A meta information with the given name already exists.' + #13#10 +
-        'A Exception should stop the build.');
-        raise Exception.Create('internal error');
+        Locale.tr('Error: A meta information with the given name already exists.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
     end else
     begin
         MetaList.Add('"' + name + '"="' + content + '"');
@@ -1156,25 +1209,25 @@ end;
 // \return pointer to memory address of the created object.
 // ----------------------------------------------------------------------------
 constructor TSnippet.Create;
-var
-    list: THndLibraryItemsInfoArray;
-    index: Integer;
-    content: TContentHelper;
+var list: THndLibraryItemsInfoArray;
+var s1, s2: String;
 begin
     inherited Create;
     FSnippetList := TStringList.Create;
     
     list := HndLibraryItems.GetItemList([itSnippet]);
-    
-    for index := 0 to list.Count-1 do
-    begin
-        content := TContentHelper.Create;
-        content.Caption := list[index].Caption;
-        content.ID      := list[index].ID;
-        content.data    := HndLibraryItems.GetItemContent(content.ID);
 
-        FSnippetList.AddObject(list[index].Caption, content);
-    end;
+    showMessage('-->> ' + list[0].ID);
+    s1 := list[index].Caption + ': ';
+    s1 := s1 + HndLibraryItems.GetItemContentAsText(list[0].ID);
+
+    ShowMessage('--> ' + s1);
+    FSnippetList.Add(s1);
+    
+    SplitString(FSnippetList[0], s1, s2);
+    ShowMessage(s1 + #13#10 + s2);
+    
+    FCount := FSnippetList.Count;
 end;
 
 // ----------------------------------------------------------------------------
@@ -1572,9 +1625,10 @@ procedure THtml.CreatePage;
 var index: Integer;
 var p1, p2: String;
 begin
-    htmlCode := '<!DOCTYPE html>' + #13#10;
-    htmlCode := htmlCode + '<head><title>' + Head.Title.get + '</title>';
-    htmlCode := htmlCode + #13#10;
+    htmlCode := '<!DOCTYPE html>' +
+    #13#10 + '<html>' +
+    #13#10 + '<head><title>' + Head.Title.get + '</title>' +
+    #13#10 ;
     
     for index := 0 to Head.Meta.Count-1 do
     begin
@@ -1599,19 +1653,14 @@ begin
     begin
         p1 := Head.CSS.get(index);
         
-        htmlCode := htmlCode + '<link type="text/css" rel="stylesheet" ' +
-        'media="all" + href="' + p1 + '" />' + #13#10;
+        htmlCode := htmlCode +
+        #13#10 + '<link type="text/css" rel="stylesheet" ' +
+        'media="all" + href="' + p1 + '" />';
     end;
     
     // Style
     for index := 0 to Head.Style.Count - 1 do
-    begin
-        p1 := Head.Style.get(index);
-        
-        htmlCode := htmlCode + '<style type="text/css">' + #13#10 +
-        '#' + p1 + #13#10 + '{'   + #13#10 +
-        p1 + #13#10 + '}</style>' + #13#10 ;
-    end;
+    htmlCode := htmlCode + Head.Style.get(index);
     
     // Script
     for index := 0 to Head.Script.Count - 1 do
@@ -1621,6 +1670,14 @@ begin
         htmlCode := htmlCode + '<link type="text/css" rel="stylesheet" ' +
         'media="all" + href="' + p1 + '" />';
     end;
+    
+    htmlCode := htmlCode +
+    #13#10 + '<body>' +
+    #13#10 ;
+    
+    htmlCode := htmlCode +
+    #13#10 + '</body>'   +
+    #13#10 ;
     
     showmessage(htmlCode);
 end;
