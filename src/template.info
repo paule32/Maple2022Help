@@ -124,3 +124,29 @@ default=
 kind=memo
 values=
 
+[var_HND_PATH]
+name=Path to HelpNDoc root directory
+name.de=HelpNDoc Stammverzeichnis
+name.es=
+name.fr=
+description=set a pointer to HelpNDoc root dir
+description.de=Gibt das Stammverzeichnis von HelpNDoc an
+description.es=
+description.fr=
+default=E:\HelpNDoc
+kind=string
+values=
+
+[var_HND_DEBUG]
+name=DEBUG Developer Information's
+name.de=DEBUG Entwickler Informationen
+name.es=
+name.fr=
+description=give HelpNDoc API informations for developers.
+description.de=gibt DEBUG Informationen für den API-Entwickler aus, um bei der Fehlersuche in den Pascal-Skripts zu helfen
+description.es=
+description.fr=
+default=Silent=0
+kind=enum
+values=Silent=0|Full=1
+

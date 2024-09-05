@@ -1,0 +1,1948 @@
+<%
+// ----------------------------------------------------------------------------
+// \file      topics.pas.htm
+// \author    Jens Kallup - paule32
+// \copyright (c) 2024 all rights reserved.
+//
+// \license   only for education and non-profit usage.
+//            commercial use is not allowed.
+// ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+// \brief The followng gloval constant string's will be used as place holder.
+//        Wathever variables names are changed to fit any other needs ...
+// ----------------------------------------------------------------------------
+const CSTR_HND_DEBUG = 'HND_DEBUG';     // debug mode => pop out message boxes
+const CSTR_HND_PATH  = 'HND_PATH';      // env. points to HelpNDoc root dir
+
+var debugMode: Boolean = false;         // default: debug mode is: off => false
+var htmlCode : String  = '';            // ouput html
+
+const MO_MAGIC_NUMBER         = $950412de;
+const MO_MAGIC_NUMBER_SWAPPED = $de120495;
+
+var
+    aTopicList: THndTopicsInfoArray;
+var
+    nCurTopic, nCurParent, nTopicKind, nHeaderKind, nFooterKind: integer;
+var
+    sCharset, sTopicHeader, sTopicFooter, sRelativeTopic: string;
+var
+    aBreadCrumb: array of String;
+
+// ----------------------------------------------------------------------------
+// \brief This function check, if the searchStr in a string list.
+// ----------------------------------------------------------------------------
+function ContainString(const AStrings: TStrings; const ASearchStr: String) : Boolean;
+var
+    LIdx : Integer;
+begin
+    result := Pos( ASearchStr, AStrings.Text ) > 0;
+    if Result then
+    begin
+        for LIdx := 0 to AStrings.Count - 1 do
+        if Pos( ASearchStr, AStrings[LIdx] ) > 0 then
+        exit;
+        result := False;
+    end;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief This function split the input string two strings.
+// ----------------------------------------------------------------------------
+procedure SplitString(const InputStr: string; var s1, s2: string);
+var PosDelimiter: Integer;
+begin
+    PosDelimiter := Pos(':', InputStr);
+
+    if PosDelimiter > 0 then
+    begin
+        s1 := Copy(InputStr, 1, PosDelimiter - 1);
+        s2 := Trim(Copy(InputStr, PosDelimiter + 1, Length(InputStr) - PosDelimiter));
+    end else
+    begin
+        s1 := InputStr;
+        s2 := '';
+    end;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  Returns the description of the topic.
+// \param  nothing
+// \return string - description of the current topic
+// ----------------------------------------------------------------------------
+function GetTopicDescription: string;
+begin
+    // Get value
+    result := HndTopics.GetTopicDescription(HndGeneratorInfo.CurrentTopic);
+    // Empty ? Use project's description instead
+    if (result = '') then
+    result := HndProjects.GetProjectSummary;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief Returns the footer
+// ----------------------------------------------------------------------------
+function GetTemplateHtmlFooter: string;
+begin
+    result := HndGeneratorInfo.GetCustomSettingValue('Footer');
+end;
+// ----------------------------------------------------------------------------
+function GetCompatibilityModeMeta(): string;
+var
+    sVersion: string;
+begin
+    result := '';
+    sVersion := HndGeneratorInfo.GetCustomSettingValue('IECompatibilityMode');
+    if Copy(sVersion, 1, 3) = 'IE=' then
+    result := Format('<meta http-equiv="X-UA-Compatible" content="%s">', [sVersion]);
+end;
+// ----------------------------------------------------------------------------
+function GetCustomCss: string;
+begin
+    result := HndGeneratorInfo.GetCustomSettingValue('CustomCss');
+    if (Result <> '') then
+    result := '<style type="text/css">' + Result + '</style>';
+end;
+// ----------------------------------------------------------------------------
+function GetCustomJs: string;
+begin
+    result := HndGeneratorInfo.GetCustomSettingValue('CustomJs');
+    if (Result <> '') then
+    result := '<script type="text/javascript">try{' + #13#10 +
+    result + #13#10 + '}catch(e){alert("Exception in custom JavaScript Code: " +' +
+    'e);}</script>';
+end;
+
+// ----------------------------------------------------------------------------
+// Return the topic extension, starting with a dot
+// ----------------------------------------------------------------------------
+function GetTopicExtension: string;
+begin
+    Result := Trim(HndGeneratorInfo.TemplateInfo.TopicExtension);
+    if ((Length(Result) > 0) and (Result[1] <> '.')) then
+        Result := '.' + Result;
+end;
+
+// ----------------------------------------------------------------------------
+// Returns the header
+// ----------------------------------------------------------------------------
+function GetTemplateHtmlHeader: string;
+begin
+    Result := HndGeneratorInfo.GetCustomSettingValue('Header');
+end;
+
+// ----------------------------------------------------------------------------
+// \brief We simulate the environment feature like declaring variables for it.
+//        You must stay tuned, if value changed.
+// ----------------------------------------------------------------------------
+type
+    TEnvironment = class
+    private
+        FHndPath: String;
+    public
+        constructor Create;
+        destructor Destroy; override;
+    published
+        property HND_PATH: String read FHndPath;
+    end;
+
+// ----------------------------------------------------------------------------
+// \brief This class is used to handle localization aspect's for international
+//        users/usage.
+// ----------------------------------------------------------------------------
+const ESTR_STOPBUILD = 'A Exception should stop the build.';
+type
+    TLocales = class
+    private
+        FMemStream: TMemoryStream;
+        FStringTable: TStringList;
+        FFallBack: Boolean;
+        
+        FFilePath: String;
+        FFileName: String;
+        FLanguage: String;
+    protected
+        procedure LocalesCheck(s: String);
+    public
+        constructor Create            ; overload;   // default: english
+        constructor Create(l: String) ; overload;   // LCD_ID : "en_us"
+        constructor Create(l: Integer); overload;   // code   : 405
+        //
+        destructor Destroy; override;
+        
+        procedure LoadFromFile(const s: string);
+        function tr(s: String): String;
+    published
+        property Language: String read FLanguage;
+        property Path: String read FFilePath;
+    end;
+
+// ----------------------------------------------------------------------------
+// \brief This class can be use for style color html parts...
+// ----------------------------------------------------------------------------
+type
+    TCustomColor = class
+    private
+        FColor: TColor;
+    public
+        constructor Create;
+        destructor Destroy; override;
+    published
+        property Black: TColor read FColor;
+        property White: TColor read FColor;
+        property Red: TColor read FColor;
+        property Blue: TColor read FColor;
+        property Green: TColor read FColor;
+        property Lime: TColor read FColor;
+        property Yellow: TColor read FColor;
+        property Navy: TColor read FColor;
+    end;
+
+type
+    TCustomImage = class
+    private
+        FImageFile: String;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure LoadFromFile(s: String);
+    end;
+
+// ----------------------------------------------------------------------------
+// \brief global scoped variables - use with caution !
+// ----------------------------------------------------------------------------
+var Env     : TEnvironment;
+var Locale  : TLocales;
+var FEditor : TObject;
+
+var MetaList  : TStringList;
+var CssList   : TStringList;
+var StyleList : TStringList;
+var ScriptList: TStringList;
+
+var Color: TCustomColor;
+    
+// ----------------------------------------------------------------------------
+// \brief This class is for holding a object in the string list of a item ...
+// ----------------------------------------------------------------------------
+type
+    TContentHelper = class
+    public
+        caption: String;        // caption of the item
+        id     : String;        // internal name
+        data   : TMemoryStream; // html content
+    end;
+
+// ----------------------------------------------------------------------------
+// \brief A list (enum) of supported item types at HelpNDoc 9.0
+// ----------------------------------------------------------------------------
+type
+    TItemType = (
+        itUnknown        =  0,
+        itPicture        =  1,
+        itMovie          =  2,
+        itDocument       =  3,
+        itSystemVariable =  4,
+        itVariable       =  5,
+        itHTML           =  6,
+        itSnippet        =  7,
+        itFolder         =  8,
+        itImageMap       =  9,
+        itBarCode        = 10,
+        itCounter        = 11
+    );
+// ----------------------------------------------------------------------------
+// \brief A list (enum) of supported caret movement states at HelpNDoc 9.0
+// ----------------------------------------------------------------------------
+type
+    TCaretMovement = (
+        cmUp            = 0,
+        cmDown          = 1,
+        cmLeft          = 2,
+        cmRight         = 3,
+        cmTop           = 4,
+        cmBottom        = 5,
+        cmHome          = 6,
+        cmEnd           = 7,
+        cnParagraph     = 8,
+        cmNextParagraph = 9
+    );
+
+// ----------------------------------------------------------------------------
+// \brief The follow class handle the snippet's int the item library.
+// ----------------------------------------------------------------------------
+type
+    TSnippet = class
+    private
+        FSnippetList: TStringList;
+        FContent: TMemoryStream;
+        FCount: Integer;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        function get(index:   Integer): TMemoryStream; overload;
+        function get(caption: String ): String; overload;
+    published
+        property Content: TMemoryStream read FContent;
+        property Count: Integer read FCount;
+    end;
+
+// ----------------------------------------------------------------------------
+// \brief A class to handle content in the topic editor ...
+// ----------------------------------------------------------------------------
+type
+    TCustomEditor = class
+    public
+        type
+        TCustomEditorCursor = class
+        public
+            constructor Create;
+            destructor Destroy; override;
+            
+            procedure down; overload;
+            procedure down(count: Integer); overload;
+            //
+            procedure up; overload;
+            procedure up(count: Integer); overload;
+            //
+            procedure left; overload;
+            procedure left(count: Integer); overload;
+            //
+            procedure right; overload;
+            procedure right(count: Integer); overload;
+            //
+            procedure moveBottom;
+            procedure moveTop;
+            
+            function getEditor: TObject;
+        end;
+    private
+        FCustomEditorCursor: TCustomEditorCursor;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure add(s: TMemoryStream);
+    published
+        property Cursor: TCustomEditorCursor read FCustomEditorCursor;
+    end;
+
+// ----------------------------------------------------------------------------
+// \brief This class stands for the html <head><title> component ...
+// ----------------------------------------------------------------------------
+type
+    TCustomHeadTitle = class
+    private
+        FTitle: String;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure set(s: String);
+        function  get: String;
+    end;
+// ----------------------------------------------------------------------------
+// \brief This class stands for the html <head><meta> component's ...
+// ----------------------------------------------------------------------------
+type
+    TCustomMetaName = class
+    private
+        FCount: Integer;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure add(s: String);
+        function  get(AIndex: Integer): String;
+    published
+        property Count: Integer read FCount;
+    end;
+type
+    TCustomMetaContent = class
+    private
+        FCount: Integer;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure add(s: String);
+        function  get(AIndex: Integer): String;
+    published
+        property Count: Integer read FCount;
+    end;
+
+type
+    TCustomHeadMeta = class
+    private
+        FMetaContent: TCustomMetaContent;
+        FMetaName: TCustomMetaName;
+    protected
+        function getMetaListCount: Integer;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure add(name: String; content: String);
+        function  get(AIndex: Integer): String;
+    published
+        property Content: TCustomMetaContent read FMetaContent;
+        property Name: TCustomMetaName read FMetaName;
+        property Count: Integer read getMetaListCount;
+    end;
+
+type
+    TCustomHeadCSS = class
+    private
+        FCount: Integer;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure add(s: String);
+        function  get(AIndex: Integer): String;
+    published
+        property Count: Integer read FCount;
+    end;
+
+type
+    TCustomHeadStyleBackground = class
+    private
+        FCustomColor: TCustomColor;
+        FCustomImage: TCustomImage;
+    public
+        constructor Create;
+        destructor Destroy; override;
+    published
+        property Color: TCustomColor read FCustomColor;
+        property Image: TCustomImage read FCustomImage;
+    end;
+
+type
+    TCustomHeadStyle = class
+    private
+        FStyleBackground: TCustomHeadStyleBackground;
+        FCount: Integer;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure add(Aident: String; AValue: String);
+        function  get(AIndex: Integer): String;
+    published
+        property Background: TCustomHeadStyleBackground read FStyleBackground;
+        property Count: Integer read FCount;
+    end;
+
+type
+    TCustomHeadScript = class
+    private
+        FCount: Integer;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure add(s: String);
+        function  get(AIndex: Integer): String;
+    published
+        property Count: Integer read FCount;
+    end;
+
+// ----------------------------------------------------------------------------
+// \brief This class stands for the html <head> component's
+// ----------------------------------------------------------------------------
+type
+    TCustomHead = class
+    private
+        FHeadTitle  : TCustomHeadTitle;
+        FHeadMeta   : TCustomHeadMeta;
+        FHeadCSS    : TCustomHeadCSS;
+        FHeadStyle  : TCustomHeadStyle;
+        FHeadScript : TCustomHeadScript;
+    public
+        constructor Create;
+        destructor Destroy; override;
+    published
+        property Title : TCustomHeadTitle  read FHeadTitle;
+        property Meta  : TCustomHeadMeta   read FHeadMeta;
+        property CSS   : TCustomHeadCSS    read FHeadCSS;
+        property Style : TCustomHeadStyle  read FHeadStyle;
+        property Script: TCustomHeadScript read FHeadScript;
+    end;
+
+// ----------------------------------------------------------------------------
+// \brief A abstract class for a html project, to hold variables in a scoped
+//        range, to "not" store all variables in the global scope.
+//        So, you can use multiple variable (names) in different domain's.
+// ----------------------------------------------------------------------------
+type
+    TCustomHtml = class
+    private
+        FTempEditor: TCustomEditor;
+        FSnippets: TSnippet;
+        FCustomHead: TCustomHead;
+    public
+        constructor Create;
+        destructor Destroy; override;
+    published
+        property Editor: TCustomEditor read FTempEditor;
+        property Snippet: TSnippet read FSnippets;
+        //
+        property Head: TCustomHead read FCustomHead;
+    end;
+// ----------------------------------------------------------------------------
+type
+    THtml = class(TCustomHtml)
+    private
+        FCharSet: String;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure CreatePage;
+    published
+        property CharSet: String read FCharSet;
+    end;
+
+{ TEnvironment }
+
+// ----------------------------------------------------------------------------
+// \brief This is the default constructor for class TEnvironment. The class is
+//        used to simulate environment values feature.
+// ----------------------------------------------------------------------------
+constructor TEnvironment.Create;
+begin
+    inherited Create;
+    
+    FHndPath := Trim(HndGeneratorInfo.GetCustomSettingValue(CSTR_HND_PATH));
+    if Length(FHndPath) < 1 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: HND_PATH variable not filled.') + #13#10 +
+        Locale.tr('A exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error.'));
+    end;
+end;
+destructor TEnvironment.Destroy;
+begin
+    inherited Destroy;
+end;
+
+{ TLocales }
+
+// ----------------------------------------------------------------------------
+// \brief  This is the default constructor for class TLocales. It is used to
+//         handle/translate application messages to the current operation
+//         system language.
+// \param  nothing
+// \return pointer to memory address of created object.
+// ----------------------------------------------------------------------------
+constructor TLocales.Create;
+var
+    s, l: String;
+begin
+    inherited Create;
+    FFallBack := false;
+
+    s := HndBuilds.GetBuildTemplate(HndBuilds.GetBuildFirst);
+    l := HndProjects.GetProjectLanguageCode;
+    
+    // todo: check !
+    if l == 'en-us' then
+        FFallBack := true else
+        FFallBack := false;
+    
+    l := StringReplace(l, '-', '_', [rfReplaceAll]);
+    
+    FFilePath := Env.HND_PATH + './Templates/chm/' + s + '/locales';
+    FFileName := FFilePath + '/' + l + '.mo';
+    
+    LocalesCheck(FFileName);
+    
+    if not FFallBack then
+    begin
+        try
+            FMemStream := TMemoryStream.Create;
+            FMemStream.LoadFromFile(FFileName);
+        except
+            if debugMode then
+            ShowMessage(
+            tr('Error: The locales file: ') + FFileName + #13#10 +
+            tr('could not be open.') + #13#10 +
+            tr('A Exception should stop the build.'));
+            raise Exception.Create(tr('internal error.'));
+        end;
+    end;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This is the default constructor for class TLocales. It is used to
+//         handle/translate application messages to the current operation
+//         system language.
+// \param  l - String => the locale as string name
+// \return pointer to memory address of created object.
+// ----------------------------------------------------------------------------
+constructor TLocales.Create(l: String);
+var
+    s: String;
+begin
+    inherited Create;
+    FFallBack := false;
+    
+    s := HndBuilds.GetBuildTemplate(HndBuilds.GetBuildFirst);
+    FFilePath := Env.HND_PATH + './Templates/chm/' + s + '/locales';
+    FFileName := FFilePath + '/en_us.mo';
+    //ShowMessage(FFileName);
+    LocalesCheck(FFileName);
+
+    if not FFallBack then
+    begin
+        try
+            FMemStream := TMemoryStream.Create;
+            FMemStream.LoadFromFile(FFileName);
+        except
+            if debugMode then
+            ShowMessage(
+            tr('Error: The locales file: ') + FFileName + #13#10 +
+            tr('could not be open.') + #13#10 +
+            tr('A Exception should stop the build.'));
+            raise Exception.Create(tr('internal error.'));
+        end;
+    end;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This is the default constructor for class TLocales. It is used to
+//         handle/translate application messages to the current operation
+//         system language.
+// \param  l - String => the locale as integer value.
+// \return pointer to memory address of created object.
+// ----------------------------------------------------------------------------
+constructor TLocales.Create(l: Integer);
+var
+    s: String;
+begin
+    inherited Create;
+    FFallBack := false;
+    
+    s := HndBuilds.GetBuildTemplate(HndBuilds.GetBuildFirst);
+    FFilePath := Env.HND_PATH + './Templates/chm/' + s + '/locales';
+    FFileName := FFilePath + '/en_us.mo';
+    //ShowMessage(FFileName);
+    LocalesCheck(FFileName);
+
+    if not FFallBack then
+    begin
+        try
+            FMemStream := TMemoryStream.Create;
+            FMemStream.LoadFromFile(FFileName);
+        except
+            if debugMode then
+            ShowMessage(
+            tr('Error: The locales file: ') + FFileName + #13#10 +
+            tr('could not be open.') + #13#10 +
+            tr('A Exception should stop the build.'));
+            raise Exception.Create(tr('internal error.'));
+        end;
+    end;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief This is the destructor of class TLocales. It is used to free memory
+//        that was allocated before.
+// ----------------------------------------------------------------------------
+destructor TLocales.Destroy;
+begin
+    if FMemStream <> nil then
+    begin
+        FMemStream.Clear;
+        FMemStream.Free;
+        FMemStream := nil;
+    end;
+    
+    inherited Destroy;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief This member function check the locales folder + file ...
+// ----------------------------------------------------------------------------
+procedure TLocales.LocalesCheck(s: String);
+begin
+    if not DirectoryExists('./locales') then
+    begin
+        if debugMode then
+        ShowMessage(
+        tr('Error: the locales directory does not exists.') + #13#10 +
+        tr('A fallback to English will be set.'));
+        FFallBack := true;
+        exit;
+    end;
+    
+    if not FileExists(FFileName) then
+    begin
+        if debugMode then
+        ShowMessage(
+        tr('Error: the locales file: ') + FFileName + #13#10 +
+        tr('does not exists.') + #13#10 +
+        tr('A fallback to English will be set.'));
+        FFallBack := true;
+        exit;
+    end;
+    
+    FFallBack := false;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function translate a given string into the user locales
+//         setting to user system language.
+// \param  s - String => The text to translate to user locale
+// \return     String => The translated text.
+// ----------------------------------------------------------------------------
+function TLocales.tr(s: String): String;
+begin
+    result := '';
+    try
+        if FFallBack then
+        begin
+            result := s;
+            exit;
+        end;
+    except
+        FFallBack := true;
+        result := s;
+        exit;
+    end;
+end;
+
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+procedure TLocales.LoadFromFile(const s: String);
+begin
+end;
+
+
+{ TCustomMetaName }
+
+constructor TCustomMetaName.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomMetaName.Destroy;
+begin
+    if MetaList <> nil then
+    begin
+        MetaList.Clear;
+        MetaList.Free;
+        MetaList := nil;
+    end;
+    
+    inherited Destroy;
+end;
+procedure TCustomMetaName.add(s: string);
+begin
+    MetaList.Add('name=' + s);
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function iterate the html head metas. If the index or
+//         the map "MetaList" is empty, then the search routine returns a null
+//         based string; else true.
+//
+// \param  index  - Integer  => a null based index.
+// \return string            => the meta name string.
+// ----------------------------------------------------------------------------
+function TCustomMetaName.get(AIndex: Integer): String;
+var s: String;
+var epos: Integer;
+begin
+    result := '';
+    
+    // index out of bounds ?
+    if (AIndex > MetaList.Count-1)
+    or (AIndex < 0)
+    or ((MetaList.Count-1) < 0) then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: meta name is empty/out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    s := MetaList.Strings[Aindex];
+    if Length(s) < 1 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: index out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    epos := Pos('=', s);
+    if epos < 0 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: list is empty') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    s := Trim(Copy(s, 1, epos - 1));
+    s := StringReplace(s, '"', '', [rfReplaceAll]);
+    
+    result := s;
+end;
+
+
+{ TCustomMetaContent }
+
+constructor TCustomMetaContent.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomMetaContent.Destroy;
+begin
+    inherited Destroy;
+end;
+procedure TCustomMetaContent.add(s: String);
+begin
+    MetaList.Add('content="' + s + '"');
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function get a meta content part within the given Aindex.
+//
+// \param  AIndex - Integer  => a null based index
+// \return string            => the meta content string
+// ----------------------------------------------------------------------------
+function TCustomMetaContent.get(AIndex: Integer): String;
+var s: String;
+var epos, len: Integer;
+begin
+    result := '';
+    
+    // index out of bounds ?
+    if (AIndex > MetaList.Count-1)
+    or (AIndex < 0)
+    or ((MetaList.Count-1) < 0) then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: meta content is empty/out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    // todo: duplicates in list ?
+    s := MetaList.Strings[Aindex];
+    if Length(s) < 1 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: index out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    epos := Pos('=', s);
+    len := Length(s);
+    
+    if (epos > 0) and (epos < len) then
+    begin
+        s := Trim(Copy(s, epos + 1, len - epos));
+        s := StringReplace(s, '"', '', [rfReplaceAll]);
+        result := s;
+        exit;
+    end else
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: list is empty') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    result := '';
+end;
+
+
+{ TCustomHeadCSS }
+
+constructor TCustomHeadCSS.Create;
+begin
+    inherited Create;
+    CssList := TStringList.Create;
+    FCount := 0;
+end;
+destructor TCustomHeadCSS.Destroy;
+begin
+    if CssList <> nil then
+    begin
+        CssList.Clear;
+        CssList.Free;
+        CssList := nil;
+    end;
+    
+    inherited Destroy;
+end;
+procedure TCustomHeadCSS.add(s: String);
+begin
+    CssList.Add(s);
+    inc(FCount);
+end;
+function TCustomHeadCSS.get(AIndex: Integer): String;
+var s: String;
+begin
+    result := '';
+    
+    if (AIndex < 0)
+    or (CssList.Count < 0) then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: css list index out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    s := Trim(CssList.Strings[Aindex]);
+    if Length(s) < 1 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: css string is empty.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    result := s;
+end;
+
+
+{ TCustomHeadStyle }
+
+constructor TCustomHeadStyle.Create;
+begin
+    inherited Create;
+    StyleList := TStringList.Create;
+    FCount := 0;
+end;
+destructor TCustomHeadStyle.Destroy;
+begin
+    if StyleList <> nil then
+    begin
+        StyleList.Clear;
+        StyleList.Free;
+        StyleList := nil;
+    end;
+    
+    inherited Destroy;
+end;
+
+procedure TCustomHeadStyle.add(AIdent: String; AValue: String);
+var SL: TStringList;
+var s1: String;
+var index: Integer;
+begin
+    if StyleList = nil then
+    StyleList := TStringList.Create;
+    
+    SL := TStringList.Create;
+    SL.Add(AValue);
+    
+    s1 := AIdent + ': ';
+    
+    for index := 0 to SL.Count - 1 do
+    s1 := s1 + SL.Strings[index];
+    StyleList.Add(s1);
+    
+    FCount := StyleList.Count;
+end;
+
+function TCustomHeadStyle.get(AIndex: Integer): String;
+var s1, s2, s3: String;
+begin
+    // index out of bounds ?
+    if (AIndex > StyleList.Count-1)
+    or (AIndex < 0)
+    or ((StyleList.Count-1) < 0) then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: meta name is empty/out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    SplitString(StyleList[AIndex], s1, s2);
+    if Length(Trim(s1)) < 1 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: index out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    if Length(Trim(s2)) < 1 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: text item is empty.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    
+    s3 := '<script type="text/css">' +
+    #13#10 + s1  + ' {'   +
+    #13#10 + s2  +
+    #13#10 + '}' + #13#10 +
+    '</script>'  ;
+    
+    //showmessage('s3: ' + #13#10 + s3);
+    result := s3;
+end;
+
+
+{ TCustomHeadScript }
+
+constructor TCustomHeadScript.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomHeadScript.Destroy;
+begin
+    inherited Destroy;
+end;
+procedure TCustomHeadScript.add(s: String);
+begin
+    ScriptList.Add(s);
+    FCount := ScriptList.Count;
+end;
+function TCustomHeadScript.get(AIndex: Integer): String;
+begin
+    result := ScriptList.Strings[AIndex];
+end;
+
+
+{ TCustomHeadMeta }
+
+// ----------------------------------------------------------------------------
+// \brief  This is the default constructor for class TCustomHeadMeta.
+// \param  nothing
+// \return pointer to memory address of the created object.
+// ----------------------------------------------------------------------------
+constructor TCustomHeadMeta.Create;
+begin
+    inherited Create;
+    MetaList := TStringList.Create;
+    
+    FMetaContent := TCustomMetaContent.Create;
+    FMetaName := TCustomMetaName.Create;
+end;
+
+destructor TCustomHeadMeta.Destroy;
+begin
+    if FMetaContent <> nil then
+    begin
+        fMetaContent.Free;
+        FMetaContent := nil;
+    end;
+    //
+    if FMetaName <> nil then
+    begin
+        FMetaName.Free;
+        FMetaName := nil;
+    end;
+    
+    if MetaList <> nil then
+    begin
+        MetaList.Clear;
+        MetaList.Free;
+        MetaList := nil;
+    end;
+    
+    inherited Destroy;
+end;
+
+function TCustomHeadMeta.getMetaListCount: Integer;
+begin
+    result := MetaList.Count;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  Add a meta "name" with the "content" to the head section of html.
+//
+// \param  name    - string
+// \param  content - string
+// \return nothing - procedure
+// ----------------------------------------------------------------------------
+procedure TCustomHeadMeta.add(name: String; content: String);
+begin
+    if MetaList.IndexOf(name) > -1 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: A meta information with the given name already exists.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end else
+    begin
+        MetaList.Add('"' + name + '"="' + content + '"');
+    end;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief Return the content of a index-based meta information from the html
+//        head section.
+//
+// \param  index  - Integer => null based index of the meta information
+// \return string - the content
+// ----------------------------------------------------------------------------
+function TCustomHeadMeta.get(Aindex: Integer): String;
+begin
+    if (AIndex > MetaList.Count-1) or (AIndex < 0) or ((MetaList.Count-1) < 0)
+    then begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: Meta list index out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+end;
+
+
+{ TCustomHeadTitle }
+
+// ----------------------------------------------------------------------------
+// \brief  This is the default constructor for class TCustomHeadTitle.
+// \param  nothing
+// \return pointer to memory address of the created object.
+// ----------------------------------------------------------------------------
+constructor TCustomHeadTitle.Create;
+begin
+    inherited Create;
+    self.set('Example');
+end;
+destructor TCustomHeadTitle.Destroy;
+begin
+    inherited Destroy;
+end;
+procedure TCustomHeadTitle.set(s: String);
+begin
+    FTitle := s;
+end;
+function TCustomHeadTitle.get: String;
+begin
+    result := FTitle;
+end;
+
+
+{ TCustomHeadStyleBackground }
+
+constructor TCustomHeadStyleBackground.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomHeadStyleBackground.Destroy;
+begin
+    inherited Destroy;
+end;
+
+
+{ TCustomHead }
+
+// ----------------------------------------------------------------------------
+// \brief  This is the default constructor for class TCustomHead.
+// \param  nothing
+// \return pointer to memory address of the created object.
+// ----------------------------------------------------------------------------
+constructor TCustomHead.Create;
+begin
+    inherited Create;
+    FHeadTitle  := TCustomHeadTitle.Create;
+    FHeadMeta   := TCustomHeadMeta.Create;
+    FHeadCSS    := TCustomHeadCSS.Create;
+    FHeadStyle  := TCustomHeadStyle.Create;
+    FHeadScript := TCustomHeadScript.Create;
+end;
+destructor TCustomHead.Destroy;
+begin
+    if FHeadScript <> nil then
+    begin
+        FHeadScript.Free;
+        FHeadScript := nil;
+    end;
+    
+    if FHeadStyle <> nil then
+    begin
+        FHeadStyle.Free;
+        FHeadStyle := nil;
+    end;
+    
+    if FHeadCSS <> nil then
+    begin
+        FHeadCss.Free;
+        FHeadCss := nil;
+    end;
+    
+    if FHeadMeta <> nil then
+    begin
+        FHeadMeta.Free;
+        FHeadMeta := nil;
+    end;
+    
+    if FHeadTitle <> nil then
+    begin
+        FHeadTitle.Free;
+        FHeadTitle := nil;
+    end;
+
+    inherited Destroy;
+end;
+
+{ TSnippet }
+
+// ----------------------------------------------------------------------------
+// \brief  This is the default constructor for class TSnippet.
+// \param  nothing
+// \return pointer to memory address of the created object.
+// ----------------------------------------------------------------------------
+constructor TSnippet.Create;
+var list: THndLibraryItemsInfoArray;
+var s1, s2: String;
+var index: Integer;
+begin
+    inherited Create;
+    FSnippetList := TStringList.Create;
+        
+    list := HndLibraryItems.GetItemList([itSnippet]);
+    
+    for index := 0 to list.Count - 1 do
+    begin
+        FContent := TMemoryStream.Create;
+        HndLibraryItems.GetItemContent(list[index].ID).SaveToStream(FContent);
+        FSnippetList.AddObject(list[index].Caption, FContent);
+    end;
+    
+    //showMessage('-->> ' + list[0].ID);
+    //s1 := list[index].Caption + ': ';
+    //s1 := s1 + HndLibraryItems.GetItemContentAsText(list[0].ID);
+
+    //ShowMessage('--> ' + s1);
+    //FSnippetList.Add(s1);
+    
+    //SplitString(FSnippetList[0], s1, s2);
+    //ShowMessage(s1 + #13#10 + s2);
+    
+    FCount := FSnippetList.Count;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief This is the destructor of class TSnippet. It is used to free memory
+//        that was allocated before.
+// ----------------------------------------------------------------------------
+destructor TSnippet.Destroy;
+begin
+    if FSnippetList <> nil then
+    begin
+        FSnippetList.Clear;
+        FSnippetList.Free;
+        FSnippetList := nil;
+    end;
+    
+    if FContent <> nil then
+    begin
+        FContent.Free;
+        FContent := nil;
+    end;
+    
+    inherited Destroy;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function get a item ID by a index
+// \param  caption - String => The library item name
+// \return id      - String => the internal item identifier
+// ----------------------------------------------------------------------------
+function TSnippet.get(index: Integer): TMemoryStream;
+begin
+    result := nil;
+    if index > FSnippetList.Count then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: The given index of snippet list is out of bounds.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    result := TMemoryStream(FSnippetList.Objects[index]);
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function get a item ID by a caption
+// \param  caption - String => The library item name
+// \return id      - String => the internal item identifier
+// ----------------------------------------------------------------------------
+function TSnippet.get(caption: String): String;
+begin
+    if FSnippetList.Count < 1 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: There are no available Snippets.') + #13#10 +
+        Locale.tr('A Exception should stop the build'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+    if FSnippetList.IndexOf(caption) < 0 then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: The index index of snippet is out of bounds.') + #13#10 +
+        Locale.tr('Caption/Snippet not found.'));
+        raise Exception.Create(Locale.tr('internal error.'));
+    end;
+    result := HndLibraryItems.GetItemByCaption(caption);
+end;
+
+{ TCustomEditor.TCustomEditorCursor }
+
+constructor TCustomEditor.TCustomEditorCursor.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomEditor.TCustomEditorCursor.Destroy;
+begin
+    inherited Destroy;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function move the topic edtior caret one line down of
+//         the currently selected editor.
+// \param  nothing
+// \return nothing
+// ----------------------------------------------------------------------------
+procedure TCustomEditor.TCustomEditorCursor.down;
+begin
+    self.down(1);
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function move the topic edtior caret n lines down of the
+//         currently selected editor.
+// \param  nothing
+// \return nothing
+// ----------------------------------------------------------------------------
+procedure TCustomEditor.TCustomEditorCursor.down(count: Integer);
+var index: Integer;
+begin
+    index := 0;
+    while index = count do
+    HndEditor.MoveCaret(getEditor, THndCaretMovement(cmDown));
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function move the topic edtior caret one line up of the
+//         currently selected editor.
+// \param  nothing
+// \return nothing
+// ----------------------------------------------------------------------------
+procedure TCustomEditor.TCustomEditorCursor.up;
+begin
+    self.up(1);
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function move the topic edtior caret n lines up of the
+//         currently selected editor.
+// \param  nothing
+// \return nothing
+// ----------------------------------------------------------------------------
+procedure TCustomEditor.TCustomEditorCursor.up(count: Integer);
+var index: Integer;
+begin
+    index := 0;
+    while index = count do
+    HndEditor.MoveCaret(getEditor, THndCaretMovement(cmUp));
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function move the topic edtior caret one char left of
+//         the currently selected editor.
+// \param  nothing
+// \return nothing
+// ----------------------------------------------------------------------------
+procedure TCustomEditor.TCustomEditorCursor.left;
+begin
+    self.left(1);
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function move the topic edtior caret n char's left of
+//         the currently selected editor.
+// \param  nothing
+// \return nothing
+// ----------------------------------------------------------------------------
+procedure TCustomEditor.TCustomEditorCursor.left(count: Integer);
+var index: Integer;
+begin
+    index := 0;
+    while index = count do
+    HndEditor.MoveCaret(getEditor, THndCaretMovement(cmLeft));
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function move the topic edtior caret to the bottom/end
+//         of the currently selected editor.
+// \param  nothing
+// \return nothing
+// ----------------------------------------------------------------------------
+procedure TCustomEditor.TCustomEditorCursor.moveBottom;
+begin
+    HndEditor.MoveCaret(getEditor, THndCaretMovement(cmBottom));
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This member function move the topic edtior caret to the top of the
+//         currently selected editor.
+// \param  nothing
+// \return nothing
+// ----------------------------------------------------------------------------
+procedure TCustomEditor.TCustomEditorCursor.moveTop;
+begin
+    HndEditor.MoveCaret(getEditor, THndCaretMovement(cmTop));
+end;
+
+function TCustomEditor.TCustomEditorCursor.getEditor: TObject;
+begin
+    result := FEditor;
+end;
+
+{ TCustomEditor }
+
+constructor TCustomEditor.Create;
+begin
+    inherited Create;
+    FEditor := HndEditor.CreateTemporaryEditor;
+end;
+destructor TCustomEditor.Destroy;
+begin
+    if FCustomEditorCursor <> nil then
+    begin
+        FCustomEditorCursor.Free;
+        FCustomEditorCursor := nil;
+    end;
+    
+    if FEditor <> nil then
+    begin
+        HndEditor.DestroyTemporaryEditor(FEditor);
+        FEditor := nil;
+    end;
+    inherited Destroy;
+end;
+
+procedure TCustomEditor.add(s: TMemoryStream);
+begin
+    HndEditor.InsertStream(FEditor, s);
+end;
+
+
+{ TCustomColor }
+
+constructor TCustomColor.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomColor.Destroy;
+begin
+    inherited Destroy;
+end;
+
+
+{ TCustomImage }
+
+constructor TCustomImage.Create;
+begin
+    inherited Create;
+end;
+destructor TCustomImage.Destroy;
+begin
+    inherited Destroy;
+end;
+procedure TCustomImage.LoadFromFile(s: String);
+begin
+    if not FileExists(s) then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: image file does not exists.') + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end;
+end;
+
+
+{ TCustomHtml }
+
+// ----------------------------------------------------------------------------
+// \brief  This is the default constructor for class TCustomHtml.
+// \param  nothing
+// \return pointer to memory address of the created object.
+// ----------------------------------------------------------------------------
+constructor TCustomHtml.Create;
+var
+    errorMessage: String;
+begin
+    inherited Create;
+    try
+        errorMessage :=
+        'Error: snippet class could not be created.';
+        FSnippets := TSnippet.Create;
+        
+        errorMessage :=
+        'Error: temporary Editor could not be create.';
+        FTempEditor := TCustomEditor.Create;
+        
+        errorMessage :=
+        'Error: html head could not be create.';
+        FCustomHead := TCustomHead.Create;
+        
+        errorMessage :=
+        'Error: css head could not be create.';
+        CssList := TStringList.Create;
+        
+        errorMessage :=
+        'Error: script head could not be create.';
+        ScriptList := TStringList.Create;
+    except
+        if debugMode then
+        ShowMessage( Locale.tr(errorMessage) + #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end; 
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This is the destructor for class TCustomHtml. It is used to free
+//         allocated memory space.
+// \param  nothing
+// \return nothing - it is a procedure
+// ----------------------------------------------------------------------------
+destructor TCustomHtml.Destroy;
+begin
+    if FTempEditor = nil then
+    begin
+        if debugMode then
+        ShowMessage(
+        Locale.tr('Error: TCustomHtml.Destroy called, and FTempEditor is nil.') + #13#10 +
+        Locale.tr('This is a internal error, because the Editor was not allocated.'));
+        raise Exception.Create(Locale.tr('internal error'));
+    end else
+    begin
+        if FTempEditor <> nil then
+        begin
+            FTempEditor.Free;
+            FTempEditor := nil;
+        end;
+    end;
+    
+    if FCustomHead <> nil then
+    begin
+        FCustomHead.Free;
+        FCustomHead := nil;
+    end;
+
+    if FSnippets <> nil then
+    begin
+        FSnippets.Free;
+        FSnippets := nil;
+    end;
+    
+    if CssList <> nil then
+    begin
+        CssList.Clear;
+        CssList.Free;
+        CssList := nil;
+    end;
+    
+    if ScriptList <> nil then
+    begin
+        ScriptList.Clear;
+        ScriptList.Free;
+        ScriptList := nil;
+    end;
+    
+    inherited Destroy;
+end;
+
+
+{ THtml }
+
+// ----------------------------------------------------------------------------
+// \brief  This is the constructor for class THtml. It is the default ctor.
+//         The variable "HND_PATH" must be available in the settings.
+// \param  nothing
+// \return pointer to memory address of the created object.
+// ----------------------------------------------------------------------------
+constructor THtml.Create;
+var AssetsfilePath: String;
+var s: String;
+begin
+    inherited Create;
+    // ---------------------------------------------
+    // debug modes (only full for debug is avalable)
+    // 0 - Silent
+    // 1 - Full
+    // --------------------------------------------
+    if HndGeneratorInfo.GetCustomSettingValue(CSTR_HND_DEBUG) == 'Full=1' then
+    begin
+        debugMode := true;
+    end;
+    
+    // -----------------------------
+    // UTF-8 or project charset ?
+    // Need BOM for UTF8 files
+    // -----------------------------
+    if HndGeneratorInfo.GetCustomSettingValue('UseCharsetForTopics') then
+    begin
+        // Use project charset
+        HndGeneratorInfo.BOMOutput := False;
+        HndGeneratorInfo.ForceOutputEncoding := True;
+        FCharset := HndProjects.GetProjectCharsetAsHtml();
+    end
+    else begin
+        HndGeneratorInfo.BOMOutput := True;
+        FCharset := 'UTF-8';
+    end;
+
+    // Output global CSS content
+    HndGeneratorInfo.CurrentFile := 'css\hnd.css';
+    print(HndProjects.GetProjectCssContent());
+
+    
+    Env := TEnvironment.Create;
+    Locale := TLocales.Create;
+
+    s := HndBuilds.GetBuildTemplate(HndBuilds.GetBuildFirst);
+    AssetsFilePath := Env.HND_PATH + '/Templates/chm/' + s + '/assets';
+    
+    // Output global CSS content
+    HndGeneratorInfo.CurrentFile := 'css\hnd.css';
+    print(HndProjects.GetProjectCssContent());
+    
+    Head.Title.set(HTMLEncode(HndTopics.GetTopicCaption(HndGeneratorInfo.CurrentTopic)));
+    //
+    Head.Meta.add('Content-Type', 'text/html; charset=' + FCharSet);
+    Head.Meta.add('description' , HTMLEncode(GetTopicDescription()));
+    Head.Meta.add('generator'   , HTMLEncode(HndGeneratorInfo.HelpNDocVersion));
+    
+    Head.CSS.add('css/reset.css');
+    Head.CSS.add('css/base.css');
+    Head.CSS.add('css/hnd.css');
+
+    Head.Script.add(AssetsfilePath + '/js/chmRelative.js');
+    
+    Head.Style.add('#topic_header','background-color: #' +
+    HndUtils.TColorToHex(
+    HndGeneratorInfo.GetCustomSettingValue('BaseColor')) + ';');
+    
+    CreatePage;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief  This is the destructor for class THtml. It will be used to try free
+//         alloced memory.
+// \param  nothing
+// \return nothing - it is a procedure 
+// ----------------------------------------------------------------------------
+destructor THtml.Destroy;
+begin
+    //HndEditor.DestroyTemporaryEditor(FEditor);
+    
+    if Locale <> nil then
+    begin
+        Locale.Free;
+        Locale := nil;
+    end;
+    
+    if Env <> nil then
+    begin
+        Env.Free;
+        Env := nil;
+    end;
+    
+    inherited Destroy;
+end;
+
+// ----------------------------------------------------------------------------
+// \brief combine all parts to a html topic document.
+// ----------------------------------------------------------------------------
+procedure THtml.CreatePage;
+var index: Integer;
+var p1, p2: String;
+begin
+    htmlCode := '<!DOCTYPE html>' +
+    #13#10 + '<html>' +
+    #13#10 + '<head><title>' + Head.Title.get + '</title>' +
+    #13#10 ;
+    
+    for index := 0 to Head.Meta.Count-1 do
+    begin
+        p1 := Head.Meta.Name   .get(index);
+        p2 := Head.Meta.Content.get(index);
+        
+        if LowerCase(Trim(p1)) == 'content-type' then
+        htmlCode := htmlCode + '<meta http-equiv="' + p1 + '" ' else
+        htmlCode := htmlCode + '<meta name="' + p1 + '" ';
+        //
+        htmlCode := htmlCode + 'content="'    + p2 + '" />';
+        htmlCode := htmlCode + #13#10;
+    end;
+        
+    // Redirect for URL and Files topic
+    if (nTopicKind = 2) then
+    htmlCode := htmlCode + Format('<meta http-equiv="refresh" content="0;URL=%s">',
+    [HndTopics.GetTopicUrlLink(HndGeneratorInfo.CurrentTopic)]) + #13#10;
+    
+    // CSS
+    for index := 0 to Head.CSS.Count - 1 do
+    begin
+        p1 := Head.CSS.get(index);
+        
+        htmlCode := htmlCode +
+        #13#10 + '<link type="text/css" rel="stylesheet" ' +
+        'media="all" + href="' + p1 + '" />';
+    end;
+    
+    // Style
+    for index := 0 to Head.Style.Count - 1 do
+    htmlCode := htmlCode + #13#10 + Head.Style.get(index);
+    
+    // Script
+    for index := 0 to Head.Script.Count - 1 do
+    begin
+        htmlCode := htmlCode +
+        #13#10 + '<script type="text/javascript" src="' + Head.Script.get(index) +
+        '"></script>';
+    end;
+    
+    htmlCode := htmlCode +
+    #13#10 + '<body>' +
+    #13#10 ;
+    
+    htmlCode := htmlCode +
+    #13#10 + '</body>'   +
+    #13#10 ;
+    
+    showmessage(htmlCode);
+end;
+
+// ----------------------------------------------------------------------------
+// \brief This function can be used, to insert snippet content at the bottom of
+//        the current topic.
+//
+// \param name: String  => the name of the snippet in the items library.
+// ----------------------------------------------------------------------------
+function insertUserSnippet(name: String): Boolean;
+var html: THtml;
+begin
+    result := false;
+
+    html := THtml.Create;
+    try
+        try
+            html.Editor.Cursor.moveBottom;
+            html.Editor.add(html.Snippet.get(0));
+        except
+            ShowMessage(
+            Locale.tr('Error: could not create tmp Editor.'));
+            raise Exception.Create(Locale.tr('internal error'));
+        end;
+    finally
+        if html <> nil then
+        begin
+            html.Free;
+            html := nil;
+        end;
+    end;
+end;
+        
+   
+begin
+    
+    // Each individual topics generated...
+    aTopicList := HndTopicsEx.GetTopicListGenerated(False, False);
+    for nCurTopic := 0 to length(aTopicList) - 1 do
+    begin
+        // Notify about the topic being generated
+        HndGeneratorInfo.CurrentTopic := aTopicList[nCurTopic].id;
+        // Topic kind
+        nTopicKind := aTopicList[nCurTopic].Kind;
+        if (nTopicKind = 1) then continue;  // Empty topic: do not generate anything
+        // Setup the file name
+        HndGeneratorInfo.CurrentFile := HndTopics.GetTopicHelpId(HndGeneratorInfo.CurrentTopic) + GetTopicExtension();
+        // Topic header
+        nHeaderKind := HndTopics.GetTopicHeaderKind(HndGeneratorInfo.CurrentTopic);
+        sTopicHeader := HndTopics.GetTopicHeaderTextCalculated(HndGeneratorInfo.CurrentTopic);
+        // Topic footer
+        nFooterKind := HndTopics.GetTopicFooterKind(HndGeneratorInfo.CurrentTopic);
+        sTopicFooter := HndTopics.GetTopicFooterTextCalculated(HndGeneratorInfo.CurrentTopic);
+        // Create the breadcrumb
+        aBreadCrumb.SetLength(0);
+        if HndGeneratorInfo.GetCustomSettingValue('ShowBreadCrumbs') then
+        begin
+            sRelativeTopic := HndTopics.GetTopicParent(HndGeneratorInfo.CurrentTopic);
+            while (sRelativeTopic <> '') and (sRelativeTopic <> HndTopics.GetProjectTopic()) do
+            begin
+                aBreadCrumb.SetLength(Length(aBreadCrumb) + 1);
+                aBreadCrumb[Length(aBreadCrumb) - 1] := sRelativeTopic;
+                sRelativeTopic := HndTopics.GetTopicParent(sRelativeTopic);
+            end;
+        end;
+
+%>
+    <%
+        // Redirect for URL and Files topic
+        if (nTopicKind = 2) then
+        begin
+          printf('<meta http-equiv="refresh" content="0;URL=%s">', [HndTopics.GetTopicUrlLink(HndGeneratorInfo.CurrentTopic)]);
+        end
+        else begin
+    %>
+    
+    <% print(GetCustomCss()); %>
+
+    
+    <%
+        end;
+    %>
+</head>
+
+<body>
+
+<%
+    // Redirect for URL and Files topic
+    if (nTopicKind = 2) then
+    begin
+      printf('<a href="%s">Redirecting... click here if nothing happens</a>', [HndTopics.GetTopicUrlLink(HndGeneratorInfo.CurrentTopic)]);
+    end
+    else begin
+%>
+
+    <% if nHeaderKind <> 2 then begin %>
+        <div id="topic_header">
+            <div id="topic_header_content">
+                <h1><% print(HTMLEncode(sTopicHeader)); %></h1>
+                
+                <%
+                    if Length(aBreadCrumb) > 0 then
+                    begin
+                %>
+                <div id="topic_breadcrumb">
+                    <%
+                        for nCurParent := Length(aBreadCrumb) - 1 downto 0 do
+                        begin
+                            // Empty topic
+                            if (HndTopics.GetTopicKind(aBreadCrumb[nCurParent]) = 1) then
+                            begin
+                                printf('%s &rsaquo;&rsaquo; ', [HTMLEncode(HndTopics.GetTopicCaption(aBreadCrumb[nCurParent]))]);
+                            end
+                            // Normal topic
+                            else begin
+                                printf('<a href="%s%s">%s</a> &rsaquo;&rsaquo; ', [HndTopics.GetTopicHelpId(aBreadCrumb[nCurParent]), GetTopicExtension(), HTMLEncode(HndTopics.GetTopicCaption(aBreadCrumb[nCurParent]))]);
+                            end;
+                        end;
+                    %>
+                </div>
+                <%
+                    end;
+                    printf('%s', [GetTemplateHtmlHeader]);
+                %>
+            </div>
+            <%
+                if HndGeneratorInfo.GetCustomSettingValue('ShowNavigation') then
+                begin
+            %>
+            <div id="topic_header_nav">
+                <%
+                    sRelativeTopic := HndTopics.GetTopicParent(HndGeneratorInfo.CurrentTopic);
+                    if (sRelativeTopic <> '') and (sRelativeTopic <> HndTopics.GetProjectTopic()) 
+                     and (HndTopics.GetTopicKind(sRelativeTopic) <> 1)  // Skip blank topics
+                    then
+                    begin
+                %>
+                
+                <a href="<% printf('%s%s', [HndTopics.GetTopicHelpId(sRelativeTopic), GetTopicExtension()]); %>"><img src="img/arrow_up.png" alt="Parent"/></a>
+                
+                <%
+                    end;
+                    // Previous topic included in TOC
+                    sRelativeTopic := HndTopicsEx.GetTopicPreviousGenerated(HndGeneratorInfo.CurrentTopic, True);
+                    while (HndTopics.GetTopicKind(sRelativeTopic) = 1) do  // Skip blank topics
+                        sRelativeTopic := HndTopicsEx.GetTopicPreviousGenerated(sRelativeTopic, True);
+                    if (sRelativeTopic <> '') and (sRelativeTopic <> HndTopics.GetProjectTopic()) then
+                    begin
+                %>
+                
+                <a href="<% printf('%s%s', [HndTopics.GetTopicHelpId(sRelativeTopic), GetTopicExtension()]); %>"><img src="img/arrow_left.png" alt="Previous"/></a>
+                
+                <%
+                    end;
+                    // Next topic included in TOC
+                    sRelativeTopic := HndTopicsEx.GetTopicNextGenerated(HndGeneratorInfo.CurrentTopic, True);
+                    while (HndTopics.GetTopicKind(sRelativeTopic) = 1) do  // Skip blank topics
+                        sRelativeTopic := HndTopicsEx.GetTopicNextGenerated(sRelativeTopic, True);
+                    if (sRelativeTopic <> '') and (sRelativeTopic <> HndTopics.GetProjectTopic()) then
+                    begin
+                %>
+                
+                <a href="<% printf('%s%s', [HndTopics.GetTopicHelpId(sRelativeTopic), GetTopicExtension()]); %>"><img src="img/arrow_right.png" alt="Next"/></a>
+                
+                <%
+                    end;
+                %>
+            </div>
+            <%
+                end;
+            %>
+            <div class="clear"></div>
+        </div>
+    <% end; %>
+    
+    <div id="topic_content">
+        <% print(HndTopics.GetTopicContentAsHtml(HndGeneratorInfo.CurrentTopic)); %>
+    </div>
+    <%
+        insertUserSnippet('11');
+    %>
+        
+    <% if nFooterKind <> 2 then begin %>
+        <div id="topic_footer">
+
+            <div id="topic_footer_content">
+                <% print(HTMLEncode(sTopicFooter)); %>
+            </div>
+        </div>
+    <% end; %>
+
+    <div id="custom_footer"><% print(GetTemplateHtmlFooter()); %></div>
+
+    <% print(GetCustomJs()); %>
+    
+<%
+    end;
+%>
+    
+</body>
+    
+</html>
+
+<%
+    end;  // for nCurTopic
+    
+end.
+%>
