@@ -8,13 +8,6 @@ var
 var
 	aBreadCrumb: array of String;
 	
-// ----------------------------------------------------------------------------
-// Returns the header
-// ----------------------------------------------------------------------------
-function GetTemplateHtmlHeader: string;
-begin
-    Result := HndGeneratorInfo.GetCustomSettingValue('Header');
-end;
 
 	function GetCompatibilityModeMeta(): string;
 	var
@@ -239,7 +232,6 @@ begin
 				%>
 			</div>
 			<%
-            printf('%s', [GetTemplateHtmlHeader]);
 				end;
 			%>
 			<div class="clear"></div>
@@ -247,6 +239,20 @@ begin
 	<% end; %>
 	
 	<div id="topic_content">
+		<div style="width:100vw;">
+		  	<div style="float:left;background-color:black;height:16px;width:100vw;">&nbsp;</div>
+		  	<div style="float:left;background-color:blue;height:12px;width:100vw;">&nbsp;</div>
+		  
+		  	<!-- div layout reset -->
+		  	<div style="clear:both;"></div>
+
+		  	<div style="background-color:red;float:right;width:200px;height:24px;
+		    font-weight:bold;color:white;font-size:12pt;text-align:center;
+		    padding-top:2px;">
+		    Maple 2022
+		  	</div>
+		</div>
+	
 		<% print(HndTopics.GetTopicContentAsHtml(HndGeneratorInfo.CurrentTopic)); %>
 	</div>
 	
@@ -254,7 +260,9 @@ begin
 		<div id="topic_footer">
 
 			<div id="topic_footer_content">
-				<% print(HTMLEncode(sTopicFooter)); %>
+				<%
+				print(HTMLEncode(sTopicFooter));
+				%>
 			</div>
 		</div>
 	<% end; %>

@@ -15,8 +15,10 @@
 const CSTR_HND_DEBUG = 'HND_DEBUG';     // debug mode => pop out message boxes
 const CSTR_HND_PATH  = 'HND_PATH';      // env. points to HelpNDoc root dir
 
-var debugMode: Boolean = false;         // default: debug mode is: off => false
+var debugMode: Integer;                 // default: debug mode is: off => false
 var htmlCode : String  = '';            // ouput html
+
+var SL: TStringList;
 
 const MO_MAGIC_NUMBER         = $950412de;
 const MO_MAGIC_NUMBER_SWAPPED = $de120495;
@@ -221,6 +223,7 @@ var MetaList  : TStringList;
 var CssList   : TStringList;
 var StyleList : TStringList;
 var ScriptList: TStringList;
+var BodyList  : TStringList;
 
 var Color: TCustomColor;
     
@@ -478,11 +481,57 @@ type
 //        So, you can use multiple variable (names) in different domain's.
 // ----------------------------------------------------------------------------
 type
+    TCustomBody = class
+    private
+        FCount: Integer;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure add(Aparent: String; AValue: String);
+    published
+        property Count: Integer read FCount;
+    end;
+// ----------------------------------------------------------------------------
+type
+    TCustomOutputFile = class
+    private
+        FFileList: TStringList;
+        FCount: Integer;
+    public
+        constructor Create;
+        destructor Destroy; override;
+        
+        procedure add(s: String);
+        function  get(AIndex: Integer): String;
+        
+        procedure clear;
+    published
+        property Count: Integer read FCount;
+    end;
+type
+    TCustomOutput = class
+    private
+        FCharSet: String;
+        FFile: TCustomOutputFile;
+    public
+        constructor Create; overload;
+        constructor Create(s: String); overload;
+        
+        destructor Destroy; override;
+    published
+        property File: TCustomOutputFile read FFile write FFile;
+        property CharSet:  String read FCharSet;
+    end;
+// ----------------------------------------------------------------------------
+type
     TCustomHtml = class
     private
         FTempEditor: TCustomEditor;
         FSnippets: TSnippet;
         FCustomHead: TCustomHead;
+        FCustomBody: TCustomBody;
+        FCustomOutput: TCustomOutput;
     public
         constructor Create;
         destructor Destroy; override;
@@ -491,19 +540,20 @@ type
         property Snippet: TSnippet read FSnippets;
         //
         property Head: TCustomHead read FCustomHead;
+        property Body: TCustomBody read FCustomBody;
+        property Output: TCustomOutput read FCustomOutput;
     end;
 // ----------------------------------------------------------------------------
 type
     THtml = class(TCustomHtml)
-    private
-        FCharSet: String;
     public
-        constructor Create;
+        constructor Create; overload;
+        constructor Create(s: String); overload;
+        constructor Create(s1: String; s2: String); overload;
+        
         destructor Destroy; override;
         
         procedure CreatePage;
-    published
-        property CharSet: String read FCharSet;
     end;
 
 { TEnvironment }
@@ -519,7 +569,7 @@ begin
     FHndPath := Trim(HndGeneratorInfo.GetCustomSettingValue(CSTR_HND_PATH));
     if Length(FHndPath) < 1 then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: HND_PATH variable not filled.') + #13#10 +
         Locale.tr('A exception should stop the build.'));
@@ -568,7 +618,7 @@ begin
             FMemStream := TMemoryStream.Create;
             FMemStream.LoadFromFile(FFileName);
         except
-            if debugMode then
+            if debugMode > 1 then
             ShowMessage(
             tr('Error: The locales file: ') + FFileName + #13#10 +
             tr('could not be open.') + #13#10 +
@@ -604,12 +654,12 @@ begin
             FMemStream := TMemoryStream.Create;
             FMemStream.LoadFromFile(FFileName);
         except
-            if debugMode then
+            if debugMode > 1 then
             ShowMessage(
-            tr('Error: The locales file: ') + FFileName + #13#10 +
-            tr('could not be open.') + #13#10 +
-            tr('A Exception should stop the build.'));
-            raise Exception.Create(tr('internal error.'));
+            ('Error: The locales file: ') + FFileName + #13#10 +
+            ('could not be open.') + #13#10 +
+            ('A Exception should stop the build.'));
+            raise Exception.Create(('internal error.'));
         end;
     end;
 end;
@@ -640,7 +690,7 @@ begin
             FMemStream := TMemoryStream.Create;
             FMemStream.LoadFromFile(FFileName);
         except
-            if debugMode then
+            if debugMode > 1 then
             ShowMessage(
             tr('Error: The locales file: ') + FFileName + #13#10 +
             tr('could not be open.') + #13#10 +
@@ -673,17 +723,19 @@ procedure TLocales.LocalesCheck(s: String);
 begin
     if not DirectoryExists('./locales') then
     begin
-        if debugMode then
-        ShowMessage(
-        tr('Error: the locales directory does not exists.') + #13#10 +
-        tr('A fallback to English will be set.'));
+        if debugMode > 1 then
+        begin
+            ShowMessage(
+            ('Error: the locales directory does not exists.') + #13#10 +
+            ('A fallback to English will be set.'));
+        end;
         FFallBack := true;
         exit;
     end;
     
     if not FileExists(FFileName) then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         tr('Error: the locales file: ') + FFileName + #13#10 +
         tr('does not exists.') + #13#10 +
@@ -765,7 +817,7 @@ begin
     or (AIndex < 0)
     or ((MetaList.Count-1) < 0) then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: meta name is empty/out of bounds.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -775,7 +827,7 @@ begin
     s := MetaList.Strings[Aindex];
     if Length(s) < 1 then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: index out of bounds.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -785,7 +837,7 @@ begin
     epos := Pos('=', s);
     if epos < 0 then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: list is empty') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -831,7 +883,7 @@ begin
     or (AIndex < 0)
     or ((MetaList.Count-1) < 0) then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: meta content is empty/out of bounds.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -842,7 +894,7 @@ begin
     s := MetaList.Strings[Aindex];
     if Length(s) < 1 then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: index out of bounds.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -860,7 +912,7 @@ begin
         exit;
     end else
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: list is empty') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -903,7 +955,7 @@ begin
     if (AIndex < 0)
     or (CssList.Count < 0) then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: css list index out of bounds.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -913,7 +965,7 @@ begin
     s := Trim(CssList.Strings[Aindex]);
     if Length(s) < 1 then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: css string is empty.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -972,7 +1024,7 @@ begin
     or (AIndex < 0)
     or ((StyleList.Count-1) < 0) then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: meta name is empty/out of bounds.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -982,7 +1034,7 @@ begin
     SplitString(StyleList[AIndex], s1, s2);
     if Length(Trim(s1)) < 1 then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: index out of bounds.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -990,7 +1042,7 @@ begin
     end;
     if Length(Trim(s2)) < 1 then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: text item is empty.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -1085,7 +1137,7 @@ procedure TCustomHeadMeta.add(name: String; content: String);
 begin
     if MetaList.IndexOf(name) > -1 then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: A meta information with the given name already exists.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -1107,7 +1159,7 @@ function TCustomHeadMeta.get(Aindex: Integer): String;
 begin
     if (AIndex > MetaList.Count-1) or (AIndex < 0) or ((MetaList.Count-1) < 0)
     then begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: Meta list index out of bounds.') + #13#10 +
         Locale.tr('A Exception should stop the build'));
@@ -1274,7 +1326,7 @@ begin
     result := nil;
     if index > FSnippetList.Count then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: The given index of snippet list is out of bounds.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
@@ -1292,7 +1344,7 @@ function TSnippet.get(caption: String): String;
 begin
     if FSnippetList.Count < 1 then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: There are no available Snippets.') + #13#10 +
         Locale.tr('A Exception should stop the build'));
@@ -1300,7 +1352,7 @@ begin
     end;
     if FSnippetList.IndexOf(caption) < 0 then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: The index index of snippet is out of bounds.') + #13#10 +
         Locale.tr('Caption/Snippet not found.'));
@@ -1477,12 +1529,38 @@ procedure TCustomImage.LoadFromFile(s: String);
 begin
     if not FileExists(s) then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: image file does not exists.') + #13#10 +
         Locale.tr('A Exception should stop the build.'));
         raise Exception.Create(Locale.tr('internal error'));
     end;
+end;
+
+
+{ TCustomBody }
+
+constructor TCustomBody.Create;
+begin
+    inherited Create;
+    BodyList := TStringList.Create;
+end;
+destructor TCustomBody.Destroy;
+begin
+    if BodyList <> nil then
+    begin
+        BodyList.Clear;
+        BodyList.Free;
+        BodyList := nil;
+    end;
+    
+    inherited Destroy;
+end;
+procedure TCustomBody.add(Aparent: String; AValue: String);
+var s: String;
+begin
+    s := Aparent + '=' + Avalue;
+    BodyList.Add(s);
 end;
 
 
@@ -1500,27 +1578,33 @@ begin
     inherited Create;
     try
         errorMessage :=
-        'Error: snippet class could not be created.';
+        Locale.tr('Error: snippet class could not be created.');
         FSnippets := TSnippet.Create;
         
         errorMessage :=
-        'Error: temporary Editor could not be create.';
+        Locale.tr('Error: temporary Editor could not be create.');
         FTempEditor := TCustomEditor.Create;
         
         errorMessage :=
-        'Error: html head could not be create.';
+        Locale.tr('Error: html head could not be create.');
         FCustomHead := TCustomHead.Create;
         
         errorMessage :=
-        'Error: css head could not be create.';
+        Locale.tr('Error: css head could not be create.');
         CssList := TStringList.Create;
         
         errorMessage :=
-        'Error: script head could not be create.';
+        Locale.tr('Error: script head could not be create.');
         ScriptList := TStringList.Create;
+
+        errorMessage :=
+        Locale.tr('Error: html head could not be create.');
+        FCustomBody := TCustomBody.Create;
+    
+        FCustomOutput := TCustomOutput.Create;
     except
-        if debugMode then
-        ShowMessage( Locale.tr(errorMessage) + #13#10 +
+        if debugMode > 1 then
+        ShowMessage( errorMessage + #13#10 +
         Locale.tr('A Exception should stop the build.'));
         raise Exception.Create(Locale.tr('internal error'));
     end; 
@@ -1536,7 +1620,7 @@ destructor TCustomHtml.Destroy;
 begin
     if FTempEditor = nil then
     begin
-        if debugMode then
+        if debugMode > 1 then
         ShowMessage(
         Locale.tr('Error: TCustomHtml.Destroy called, and FTempEditor is nil.') + #13#10 +
         Locale.tr('This is a internal error, because the Editor was not allocated.'));
@@ -1576,32 +1660,68 @@ begin
         ScriptList := nil;
     end;
     
+    if Locale <> nil then
+    begin
+        Locale.Free;
+        Locale := nil;
+    end;
+    
+    if FCustomOutput <> nil then
+    begin
+        FCustomOutput.Free;
+        FCustomOutput := nil;
+    end;
+    
     inherited Destroy;
 end;
 
 
-{ THtml }
+{ TCustomOutputFile }
 
-// ----------------------------------------------------------------------------
-// \brief  This is the constructor for class THtml. It is the default ctor.
-//         The variable "HND_PATH" must be available in the settings.
-// \param  nothing
-// \return pointer to memory address of the created object.
-// ----------------------------------------------------------------------------
-constructor THtml.Create;
-var AssetsfilePath: String;
-var s: String;
+constructor TCustomOutputFile.Create;
 begin
     inherited Create;
-    // ---------------------------------------------
-    // debug modes (only full for debug is avalable)
-    // 0 - Silent
-    // 1 - Full
-    // --------------------------------------------
-    if HndGeneratorInfo.GetCustomSettingValue(CSTR_HND_DEBUG) == 'Full=1' then
+    FFileList := TStringList.Create;
+    FFileList.Clear;
+    
+    FCount := FFileList.Count;
+end;
+destructor TCustomOutputFile.Destroy;
+begin
+    if FFileList <> nil then
     begin
-        debugMode := true;
+        FFileList.Clear;
+        FFileList.Free;
+        FFileList := nil;
     end;
+    inherited Destroy;
+end;
+
+procedure TCustomOutputFile.add(s: String);
+begin
+    FFileList.Add(s);
+end;
+
+function TCustomOutputFile.get(AIndex: Integer): String;
+begin
+    result := FFileList[AIndex];
+end;
+
+procedure TCustomOutputFile.Clear;
+begin
+    FFileList.Clear;
+end;
+
+
+{ TCustomOutput }
+
+constructor TCustomOutput.Create;
+begin
+    inherited Create;
+    FFile := TCustomOutputFile.Create;
+    
+    if File.Count - 1 < 0 then
+    File.add('help.hnd');
     
     // -----------------------------
     // UTF-8 or project charset ?
@@ -1618,15 +1738,74 @@ begin
         HndGeneratorInfo.BOMOutput := True;
         FCharset := 'UTF-8';
     end;
-
-    // Output global CSS content
-    HndGeneratorInfo.CurrentFile := 'css\hnd.css';
-    print(HndProjects.GetProjectCssContent());
-
+end;
+constructor TCustomOutput.Create(s: String);
+begin
+    inherited Create;
+    FFile := TCustomOutputFile.Create;
     
+    if File.Count - 1 < 0 then
+    File.add(s);
+end;
+destructor TCustomOutput.Destroy;
+begin
+    if FFile <> nil then
+    begin
+        FFile.Free;
+        FFile := nil;
+    end;
+    
+    inherited Destroy;
+end;
+
+
+{ THtml }
+
+// ----------------------------------------------------------------------------
+// \brief  This is the constructor for class THtml. It is the default ctor.
+//         The variable "HND_PATH" must be available in the settings.
+// \param  nothing
+// \return pointer to memory address of the created object.
+// ----------------------------------------------------------------------------
+constructor THtml.Create;
+var AssetsfilePath: String;
+var leftPart, rightPart: String;
+var i, code, sePos: Integer;
+var s, outCSS: String;
+begin
     Env := TEnvironment.Create;
     Locale := TLocales.Create;
-
+    
+    inherited Create;
+    
+    // ---------------------------------------------
+    // debug modes (only full for debug is avalable)
+    // 0 - Silent
+    // 9 - Full
+    // --------------------------------------------
+    debugMode := 1;
+    
+    s := HndGeneratorInfo.GetCustomSettingValue(String(CSTR_HND_DEBUG));
+    sePos := Pos('=', s);
+    leftPart  := Trim(Copy(CSTR_HND_DEBUG, 1, sePos - 1));
+    rightPart := Trim(Copy(CSTR_HND_DEBUG, sePos + 1, Length(CSTR_HND_DEBUG) - sePos));
+    
+    code := CompareText(leftPart, 'full');
+    if code == 0 then
+    begin
+        i := StrToInt(rightPart);
+        if (i < 0) or (i > 9) then
+        begin
+            ShowMessage(
+            Locale.tr('Error: internal error: str_hnd_debug.') + #13#10 +
+            Locale.tr('A Exception should stop the build'));
+            raise Exception.Create(Locale.tr('internal error'));
+        end else
+        begin
+            debugMode := 1;
+        end;
+    end;
+    
     s := HndBuilds.GetBuildTemplate(HndBuilds.GetBuildFirst);
     AssetsFilePath := Env.HND_PATH + '/Templates/chm/' + s + '/assets';
     
@@ -1636,7 +1815,7 @@ begin
     
     Head.Title.set(HTMLEncode(HndTopics.GetTopicCaption(HndGeneratorInfo.CurrentTopic)));
     //
-    Head.Meta.add('Content-Type', 'text/html; charset=' + FCharSet);
+    Head.Meta.add('Content-Type', 'text/html; charset=' + Output.CharSet);
     Head.Meta.add('description' , HTMLEncode(GetTopicDescription()));
     Head.Meta.add('generator'   , HTMLEncode(HndGeneratorInfo.HelpNDocVersion));
     
@@ -1650,7 +1829,40 @@ begin
     HndUtils.TColorToHex(
     HndGeneratorInfo.GetCustomSettingValue('BaseColor')) + ';');
     
+    // ----------------------------
+    // add writer topic content ...
+    // ----------------------------
+    s := HndTopics.GetCurrentTopic;
+    s := HndTopics.GetTopicContentAsHtml(s);
+
+    Body.add('body', s);
+    
+    Output.File.add('help2.hnd');
     CreatePage;
+end;
+
+constructor THtml.Create(s: String);
+begin
+    inherited Create;
+end;
+
+constructor THtml.Create(s1: String; s2: String);
+begin
+    inherited Create;
+    
+    Output.File.Clear;
+    Output.File.add(s2);
+    
+    if not FileExists(s2) then
+    begin
+        if debugMode > 1 then
+        ShowMessage(
+        Locale.tr('Error: file does not exists:') +
+        #13#10 + s2 +
+        #13#10 +
+        Locale.tr('A Exception should stop the build.'));
+        raise Exception.Create(Locale.tr('internal error.'));
+    end;
 end;
 
 // ----------------------------------------------------------------------------
@@ -1682,8 +1894,9 @@ end;
 // \brief combine all parts to a html topic document.
 // ----------------------------------------------------------------------------
 procedure THtml.CreatePage;
-var index: Integer;
+var index, ep: Integer;
 var p1, p2: String;
+var s1, s2: String;
 begin
     htmlCode := '<!DOCTYPE html>' +
     #13#10 + '<html>' +
@@ -1705,8 +1918,9 @@ begin
         
     // Redirect for URL and Files topic
     if (nTopicKind = 2) then
-    htmlCode := htmlCode + Format('<meta http-equiv="refresh" content="0;URL=%s">',
-    [HndTopics.GetTopicUrlLink(HndGeneratorInfo.CurrentTopic)]) + #13#10;
+    htmlCode := htmlCode + Format('<meta http-equiv="refresh" content="0;URL=%s">', [
+    HndTopics.GetTopicUrlLink(
+    HndGeneratorInfo.CurrentTopic)]) + #13#10;
     
     // CSS
     for index := 0 to Head.CSS.Count - 1 do
@@ -1731,14 +1945,23 @@ begin
     end;
     
     htmlCode := htmlCode +
-    #13#10 + '<body>' +
-    #13#10 ;
+    #13#10 + '<body>';
+    
+    // body code
+    for index := 0 to BodyList.Count - 1 do
+    begin
+        ep := Pos('=', BodyList[index]);
+        s1 := Copy(BodyList[index], 1, ep - 1);
+        s2 := Copy(BodyList[index], ep + 1, Length(BodyList[index]) - ep);
+        
+        htmlCode := htmlCode + s2;
+    end;
     
     htmlCode := htmlCode +
     #13#10 + '</body>'   +
     #13#10 ;
     
-    showmessage(htmlCode);
+    //showmessage(htmlCode);
 end;
 
 // ----------------------------------------------------------------------------
@@ -1783,8 +2006,10 @@ begin
         // Topic kind
         nTopicKind := aTopicList[nCurTopic].Kind;
         if (nTopicKind = 1) then continue;  // Empty topic: do not generate anything
+        
         // Setup the file name
         HndGeneratorInfo.CurrentFile := HndTopics.GetTopicHelpId(HndGeneratorInfo.CurrentTopic) + GetTopicExtension();
+        
         // Topic header
         nHeaderKind := HndTopics.GetTopicHeaderKind(HndGeneratorInfo.CurrentTopic);
         sTopicHeader := HndTopics.GetTopicHeaderTextCalculated(HndGeneratorInfo.CurrentTopic);
@@ -1942,7 +2167,24 @@ begin
 </html>
 
 <%
-    end;  // for nCurTopic
+(*
+    HndGeneratorInfo.CurrentFile :=  HndTopics.GetTopicHelpId(
+    HndGeneratorInfo.CurrentTopic) + GetTopicExtension();
     
+    ShowMessage(HndGeneratorInfo.CurrentFile);
+    
+    if SL == nil then
+    SL := TStringList.Create;
+    SL.Add(htmlCode);
+    SL.SaveToFile(HndGeneratorInfo.CurrentFile);
+    SL.Clear;
+*)
+    end;  // for nCurTopic
+
+(*
+    SL.Clear;
+    SL.Free;
+    SL := nil;
+*)
 end.
 %>
